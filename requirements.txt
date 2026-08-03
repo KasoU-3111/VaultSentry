@@ -1,0 +1,19 @@
+# PE Analysis Engine
+pefile==2023.2.7
+
+# Document & Macro Inspection
+oletools==0.60.1
+PyMuPDF==1.23.22
+
+# Signature & Heuristic Pattern Engine
+yara-python==4.5.0
+
+# Archive Extractor Engines
+py7zr==0.21.0
+rarfile==4.1
+
+# Automated Code Quality & Testing
+pytest==8.1.1
+pytest-cov==4.1.0
+pylint==3.1.0
+mypy==1.9.0

@@ -1,0 +1,41 @@
+# ==========================================
+# Python Virtual Environment & Cache
+# ==========================================
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+
+# ==========================================
+# C# / .NET / Visual Studio Artifacts
+# ==========================================
+bin/
+obj/
+.vs/
+*.user
+*.suo
+*.userosv
+
+# ==========================================
+# Database & Runtime Output
+# ==========================================
+*.sqlite3
+*.db
+quarantine_storage/*
+!quarantine_storage/.gitkeep
+logs/*
+!logs/.gitkeep
+
+# ==========================================
+# IDE & Operating System Files
+# ==========================================
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+.DS_Store
+Thumbs.db
