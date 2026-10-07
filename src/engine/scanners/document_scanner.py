@@ -1,137 +1,253 @@
 """
 VaultSentry - Module 5: Document Analysis Engine
-Statically analyzes Microsoft Office files (OLE/OpenXML macros) via oletools 
-and PDF structure/JavaScript streams via PyMuPDF (fitz).
+Statically analyzes Microsoft Office files (OLE/OpenXML macros, remote templates) 
+via oletools/zipfile and PDF structural streams/attachments via PyMuPDF (fitz).
 """
 
+import zipfile
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Any, Dict, List, Optional
 
 import fitz  # PyMuPDF
 from oletools.olevba import VBA_Parser  # type: ignore
 
-# Suspicious PDF actions and keys
-SUSPICIOUS_PDF_KEYS = [
-    "/JavaScript", "/JS", "/Launch", "/EmbeddedFiles", 
-    "/OpenAction", "/AA", "/SubmitForm", "/ImportData"
-]
+from src.engine.plugins.base_scanner import BaseScanner
 
-class DocumentScanner:
-    """
-    Static security analyzer for Office documents and PDF files.
-    """
 
-    def scan_office_document(self, path: Path) -> Dict[str, Any]:
-        """
-        Parses Office files to detect suspicious VBA macros, AutoExec triggers, and obfuscation.
-        """
-        warnings: List[str] = []
-        has_macros = False
-        macro_results: List[Dict[str, Any]] = []
+class DocumentScanner(BaseScanner):
+    """Enterprise static security analyzer for Office documents and PDF files."""
 
+    MAGIC_PDF = b"%PDF-"
+    MAGIC_OLE = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
+    MAGIC_ZIP = b"PK\x03\x04"
+
+    OFFICE_EXTENSIONS = {
+        ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
+        ".docm", ".dotm", ".xlsm", ".xltm", ".pptm", ".potm", ".rtf"
+    }
+
+    SUSPICIOUS_PDF_ACTIONS = {
+        "/JavaScript": ("CRITICAL", "Embedded JavaScript Engine Stream Detected"),
+        "/JS": ("CRITICAL", "Embedded JavaScript Engine Stream Detected"),
+        "/Launch": ("CRITICAL", "Arbitrary Executable /Launch Directive Detected"),
+        "/OpenAction": ("HIGH", "Document Auto-Execution (/OpenAction) Trigger Present"),
+        "/AA": ("HIGH", "Additional Action (/AA) Auto-Execution Hook Present"),
+        "/SubmitForm": ("MEDIUM", "Form Data Exfiltration (/SubmitForm) Endpoint Present"),
+        "/ImportData": ("MEDIUM", "Dynamic Data Import (/ImportData) Hook Present"),
+        "/EmbeddedFiles": ("MEDIUM", "Embedded File Container Tree (/EmbeddedFiles) Present")
+    }
+
+    DANGEROUS_ATTACHMENT_EXTENSIONS = {
+        ".exe", ".scr", ".bat", ".cmd", ".vbs", ".ps1", ".js", ".hta", ".dll", ".pif", ".cpl"
+    }
+
+    def __init__(self) -> None:
+        super().__init__(scanner_id="DocumentScanner", priority=45)
+
+    def is_applicable(self, path: Path, context: Dict[str, Any]) -> bool:
+        ext = path.suffix.lower()
+        if ext == ".pdf" or ext in self.OFFICE_EXTENSIONS:
+            return True
+        try:
+            with open(path, "rb") as f:
+                header = f.read(8)
+                return (
+                    header.startswith(self.MAGIC_PDF) or 
+                    header.startswith(self.MAGIC_OLE) or 
+                    header.startswith(self.MAGIC_ZIP)
+                )
+        except Exception:
+            return False
+
+    def _identify_document_type(self, path: Path) -> str:
+        try:
+            with open(path, "rb") as f:
+                header = f.read(8)
+                if header.startswith(self.MAGIC_PDF):
+                    return "PDF"
+                if header.startswith(self.MAGIC_OLE):
+                    return "OFFICE_OLE"
+                if header.startswith(self.MAGIC_ZIP):
+                    return "OFFICE_OPENXML"
+        except Exception:
+            pass
+
+        ext = path.suffix.lower()
+        if ext == ".pdf":
+            return "PDF"
+        if ext in self.OFFICE_EXTENSIONS:
+            return "OFFICE_GENERIC"
+        return "UNKNOWN"
+
+    def _scan_remote_template_injection(self, path: Path) -> List[Dict[str, str]]:
+        findings: List[Dict[str, str]] = []
+        try:
+            if not zipfile.is_zipfile(path):
+                return findings
+
+            with zipfile.ZipFile(path, "r") as zf:
+                rels_files = [f for f in zf.namelist() if f.endswith(".rels")]
+                for rels in rels_files:
+                    content = zf.read(rels).decode("utf-8", errors="ignore")
+                    if "attachedTemplate" in content and "TargetMode=\"External\"" in content:
+                        findings.append({
+                            "severity": "CRITICAL",
+                            "category": "Document Analysis",
+                            "finding": "Remote Template Injection Detected",
+                            "explanation": f"Document relationships in '{rels}' instruct Word to load a remote macro-enabled template payload."
+                        })
+        except Exception:
+            pass
+        return findings
+
+    def _scan_office_document(self, path: Path) -> List[Dict[str, str]]:
+        findings: List[Dict[str, str]] = []
+        findings.extend(self._scan_remote_template_injection(path))
+
+        vba_parser: Optional[VBA_Parser] = None
         try:
             vba_parser = VBA_Parser(str(path))
-            has_macros = vba_parser.detect_vba_macros()
+            if vba_parser.detect_vba_macros():
+                findings.append({
+                    "severity": "HIGH",
+                    "category": "Document Analysis",
+                    "finding": "VBA Macros Present",
+                    "explanation": "Document contains embedded Visual Basic for Applications (VBA) macro modules."
+                })
 
-            if has_macros:
-                warnings.append("SUSPICIOUS: Microsoft Office VBA Macros detected inside document.")
-                
-                for _, _, _, vba_code in vba_parser.extract_macros():
-                    # Analyze extracted macro code using oletools heuristics
-                    analysis = vba_parser.analyze_macros()
-                    for kw_type, keyword, description in analysis:
-                        if kw_type == "AutoExec":
-                            warnings.append(f"CRITICAL Macro Trigger: '{keyword}' ({description})")
-                        elif kw_type in ("Suspicious", "IOC"):
-                            warnings.append(f"RISK Macro Keyword: '{keyword}' ({description})")
+                analysis_results = vba_parser.analyze_macros()
+                autoexec_found = False
+                suspicious_ioc_count = 0
 
-                        macro_results.append({
-                            "type": kw_type,
-                            "keyword": keyword,
-                            "description": description
+                for kw_type, keyword, description in analysis_results:
+                    if kw_type == "AutoExec" and not autoexec_found:
+                        findings.append({
+                            "severity": "CRITICAL",
+                            "category": "Document Analysis",
+                            "finding": f"Macro Auto-Execution Trigger ({keyword})",
+                            "explanation": f"Document automatically triggers macro execution on open/close: {description}"
                         })
+                        autoexec_found = True
+                    elif kw_type in ("Suspicious", "IOC"):
+                        suspicious_ioc_count += 1
+                        if suspicious_ioc_count <= 3:
+                            findings.append({
+                                "severity": "HIGH",
+                                "category": "Document Analysis",
+                                "finding": f"Suspicious Macro Command ({keyword})",
+                                "explanation": f"Macro executes high-risk functions or commands: {description}"
+                            })
 
-            vba_parser.close()
-
-            return {
-                "is_office_doc": True,
-                "has_macros": has_macros,
-                "macro_findings": macro_results,
-                "warnings": warnings,
-                "status": "COMPLETED"
-            }
-
+                if suspicious_ioc_count > 3:
+                    findings.append({
+                        "severity": "HIGH",
+                        "category": "Document Analysis",
+                        "finding": f"Multiple Suspicious Macro Capabilities ({suspicious_ioc_count} total)",
+                        "explanation": "Document contains an extensive set of suspicious execution, API call, or network indicators."
+                    })
         except Exception as e:
-            return {
-                "is_office_doc": False,
-                "error": f"Failed to parse as Office document: {str(e)}"
-            }
+            findings.append({
+                "severity": "LOW",
+                "category": "Document Analysis",
+                "finding": "Office Parser Exception",
+                "explanation": f"Non-standard Office container structure: {str(e)}"
+            })
+        finally:
+            if vba_parser:
+                try:
+                    vba_parser.close()
+                except Exception:
+                    pass
 
-    def scan_pdf_document(self, path: Path) -> Dict[str, Any]:
-        """
-        Inspects PDF streams for embedded JavaScript, launch triggers, and hidden attachments.
-        """
-        warnings: List[str] = []
-        found_suspicious_keys: List[str] = []
+        return findings
+
+    def _scan_pdf_document(self, path: Path) -> List[Dict[str, str]]:
+        findings: List[Dict[str, str]] = []
+        doc: Optional[fitz.Document] = None
 
         try:
             doc = fitz.open(str(path))
-            
-            # 1. Scan xref object graph for suspicious actions
+            detected_keys = set()
             for i in range(1, doc.xref_length()):
                 try:
                     obj_str = doc.xref_object(i)
-                    for key in SUSPICIOUS_PDF_KEYS:
-                        if key in obj_str and key not in found_suspicious_keys:
-                            found_suspicious_keys.append(key)
-                            if key in ["/JavaScript", "/JS"]:
-                                warnings.append(f"CRITICAL: PDF contains embedded JavaScript stream ({key}).")
-                            elif key == "/Launch":
-                                warnings.append("CRITICAL: PDF contains executable /Launch action.")
-                            else:
-                                warnings.append(f"SUSPICIOUS: PDF contains action trigger '{key}'.")
+                    for key, (severity, description) in self.SUSPICIOUS_PDF_ACTIONS.items():
+                        if key in obj_str and key not in detected_keys:
+                            detected_keys.add(key)
+                            findings.append({
+                                "severity": severity,
+                                "category": "Document Analysis",
+                                "finding": f"Suspicious PDF Action ({key})",
+                                "explanation": f"PDF stream object {i} declares interactive action: {description}"
+                            })
                 except Exception:
                     continue
 
-            # 2. Inspect embedded attachments
             embedded_count = doc.embfile_count()
             if embedded_count > 0:
-                warnings.append(f"RISK: PDF contains {embedded_count} embedded attachment(s).")
+                has_dangerous_attachment = False
+                attachment_names: List[str] = []
 
-            doc.close()
+                for idx in range(embedded_count):
+                    try:
+                        emb_info = doc.embfile_info(idx)
+                        filename = emb_info.get("filename", f"attachment_{idx}")
+                        attachment_names.append(filename)
+                        ext = Path(filename).suffix.lower()
+                        if ext in self.DANGEROUS_ATTACHMENT_EXTENSIONS:
+                            has_dangerous_attachment = True
+                    except Exception:
+                        continue
 
-            return {
-                "is_pdf": True,
-                "page_count": len(doc) if 'doc' in locals() else 0,
-                "found_suspicious_keys": found_suspicious_keys,
-                "embedded_files_count": embedded_count,
-                "warnings": warnings,
-                "status": "COMPLETED"
-            }
-
+                if has_dangerous_attachment:
+                    findings.append({
+                        "severity": "CRITICAL",
+                        "category": "Document Analysis",
+                        "finding": "Executable/Script Embedded in PDF",
+                        "explanation": f"PDF encapsulates high-risk executable attachments: {', '.join(attachment_names)}"
+                    })
+                else:
+                    findings.append({
+                        "severity": "MEDIUM",
+                        "category": "Document Analysis",
+                        "finding": f"Embedded File Attachments ({embedded_count})",
+                        "explanation": f"PDF contains embedded file objects: {', '.join(attachment_names)}"
+                    })
         except Exception as e:
-            return {
-                "is_pdf": False,
-                "error": f"Failed to parse as PDF document: {str(e)}"
-            }
+            findings.append({
+                "severity": "HIGH",
+                "category": "Document Analysis",
+                "finding": "Corrupted or Malformed PDF Stream",
+                "explanation": f"PDF engine failed to parse document structure: {str(e)}"
+            })
+        finally:
+            if doc:
+                try:
+                    doc.close()
+                except Exception:
+                    pass
 
-    def scan_document(self, file_path_str: str) -> Dict[str, Any]:
-        """
-        Unified router for document analysis based on file extension.
-        """
-        path = Path(file_path_str).resolve()
-        ext = path.suffix.lower()
+        return findings
 
-        if ext in [".doc", ".docx", ".xls", ".xlsx", ".docm", ".xlsm", ".ppt", ".pptm"]:
-            return self.scan_office_document(path)
-        elif ext == ".pdf":
-            return self.scan_pdf_document(path)
-        else:
+    def scan(self, path: Path, context: Dict[str, Any]) -> Dict[str, Any]:
+        doc_type = self._identify_document_type(path)
+        if doc_type == "UNKNOWN":
             return {
+                "scanner": self.scanner_id,
                 "is_document": False,
-                "message": f"File extension '{ext}' is not supported by DocumentScanner."
+                "findings": []
             }
 
+        findings: List[Dict[str, str]] = []
+        if doc_type == "PDF":
+            findings = self._scan_pdf_document(path)
+        else:
+            findings = self._scan_office_document(path)
 
-if __name__ == "__main__":
-    print("[+] Document Analysis Engine module loaded.")
+        return {
+            "scanner": self.scanner_id,
+            "is_document": True,
+            "document_type": doc_type,
+            "findings_count": len(findings),
+            "findings": findings
+        }

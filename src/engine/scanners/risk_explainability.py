@@ -7,26 +7,28 @@ explainable, human-readable security reports for the user and GUI.
 from typing import Dict, Any, List
 
 class RiskAndExplainabilityEngine:
-    """
-    Aggregates multi-scanner outputs into a weighted risk score and natural language security report.
-    """
 
     def calculate_risk_score(self, scan_results: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Processes findings from all scanners to calculate a normalized risk score (0-100).
-        """
         raw_score = 0
         flagged_reasons: List[Dict[str, Any]] = []
 
         # 1. Identity & Integrity Checks
         identity = scan_results.get("identity_integrity", {})
-        if identity.get("spoofing_detected", False):
+        if identity.get("double_extension_detected", False):
+            raw_score += 50
+            flagged_reasons.append({
+                "severity": "CRITICAL",
+                "category": "Identity / Extension",
+                "finding": "Double Extension Disguise Detected",
+                "explanation": "This file uses a deceptive double extension (e.g., .pdf.exe). It appears as a document but executes binary code when opened."
+            })
+        elif identity.get("spoofing_detected", False):
             raw_score += 40
             flagged_reasons.append({
                 "severity": "CRITICAL",
-                "category": "Identity",
+                "category": "Identity / Header",
                 "finding": "Extension Spoofing Detected",
-                "explanation": "The file extension does not match its actual byte header. Attackers often disguise executable malware as documents or images."
+                "explanation": "The file extension does not match its actual magic byte header."
             })
 
         # 2. PE Scanner Checks
@@ -38,7 +40,7 @@ class RiskAndExplainabilityEngine:
                     "severity": "HIGH",
                     "category": "Structure",
                     "finding": "High Entropy / Packed Executable",
-                    "explanation": "Portions of this executable are encrypted or compressed, which is commonly done to hide malicious code from antivirus inspection."
+                    "explanation": "Portions of this executable are compressed or encrypted to obscure inner code."
                 })
             
             flagged_apis = pe.get("flagged_apis", [])
@@ -49,7 +51,7 @@ class RiskAndExplainabilityEngine:
                     "severity": "MEDIUM",
                     "category": "API Imports",
                     "finding": f"Sensitive Windows APIs ({len(flagged_apis)} detected)",
-                    "explanation": "The program requests access to system APIs that allow process memory modification, hook injection, or network downloading."
+                    "explanation": "The program requests system APIs capable of process injection or dynamic memory modification."
                 })
 
         # 3. Document Scanner Checks
@@ -60,63 +62,32 @@ class RiskAndExplainabilityEngine:
                 "severity": "HIGH",
                 "category": "Macro Code",
                 "finding": "Embedded VBA Macros",
-                "explanation": "This document contains automated scripts that run when opened. Malicious documents use macros to download and install payloads."
-            })
-        
-        if "/JavaScript" in doc.get("found_suspicious_keys", []):
-            raw_score += 35
-            flagged_reasons.append({
-                "severity": "HIGH",
-                "category": "PDF Script",
-                "finding": "PDF Embedded JavaScript",
-                "explanation": "This PDF contains embedded JavaScript code that runs automatically, which can exploit vulnerabilities in PDF readers."
+                "explanation": "This document contains automated scripts that run when opened."
             })
 
-        # 4. Archive Scanner Checks
-        archive = scan_results.get("archive", {})
-        if archive.get("is_zip_bomb", False):
-            raw_score += 50
-            flagged_reasons.append({
-                "severity": "CRITICAL",
-                "category": "Archive",
-                "finding": "Potential Decompression Bomb (Zip Bomb)",
-                "explanation": "The archive expands to an abnormally large size compared to its compressed state, which can exhaust storage or system RAM."
-            })
-        if archive.get("has_password", False):
-            raw_score += 15
-            flagged_reasons.append({
-                "severity": "MEDIUM",
-                "category": "Archive",
-                "finding": "Password Protected Archive",
-                "explanation": "The archive contents are encrypted with a password, preventing static analysis from verifying inner files."
-            })
-
-        # 5. YARA & ClamAV Signature Checks
-        malware = scan_results.get("malware", {})
-        yara_matches = malware.get("yara", {}).get("matches", [])
-        if yara_matches:
-            raw_score += 50
-            for match in yara_matches:
+        # 4. Heuristic Checks Integration
+        heuristics = scan_results.get("heuristics", {})
+        heur_flags = heuristics.get("flags", [])
+        for flag in heur_flags:
+            if "HIGH_RISK_DOUBLE_EXTENSION" in flag and not identity.get("double_extension_detected", False):
+                raw_score += 40
                 flagged_reasons.append({
                     "severity": "CRITICAL",
-                    "category": "YARA Signature",
-                    "finding": f"YARA Rule Triggered: {match['rule']}",
-                    "explanation": f"File matched known malware pattern rules ({match.get('meta', {})})."
+                    "category": "Heuristics",
+                    "finding": "Double Extension Flagged",
+                    "explanation": flag
+                })
+            elif "CRITICAL_IMPERSONATION" in flag:
+                raw_score += 50
+                flagged_reasons.append({
+                    "severity": "CRITICAL",
+                    "category": "Heuristics",
+                    "finding": "System Executable Impersonation",
+                    "explanation": flag
                 })
 
-        if malware.get("clamav", {}).get("is_infected", False):
-            raw_score += 60
-            flagged_reasons.append({
-                "severity": "CRITICAL",
-                "category": "ClamAV Signature",
-                "finding": "Known Malware Signature Detected",
-                "explanation": "ClamAV database identified this file as a known virus or trojan."
-            })
-
-        # 6. Heuristic Checks
-        heuristics = scan_results.get("heuristics", {})
         heur_score = heuristics.get("heuristic_score", 0)
-        raw_score += int(heur_score * 0.4)
+        raw_score += int(heur_score * 0.3)
 
         # Final Bounded Score
         final_score = min(max(raw_score, 0), 100)
@@ -124,13 +95,13 @@ class RiskAndExplainabilityEngine:
         # Verdict Assignment
         if final_score < 20:
             verdict = "SAFE"
-            recommendation = "The file passed all static security checks. It is safe to move to local storage."
+            recommendation = "The file passed static security checks. Safe to move to local storage."
         elif final_score < 55:
             verdict = "SUSPICIOUS"
-            recommendation = "The file exhibits unusual characteristics. Retain in quarantine or review findings before opening."
+            recommendation = "The file exhibits suspicious traits. Retain in quarantine or review findings before opening."
         else:
             verdict = "MALICIOUS"
-            recommendation = "CRITICAL RISK: Highly dangerous characteristics or signatures found. Permanent deletion is strongly recommended."
+            recommendation = "CRITICAL RISK: Highly dangerous characteristics detected. Permanent deletion is strongly recommended."
 
         return {
             "risk_score": final_score,
@@ -141,9 +112,6 @@ class RiskAndExplainabilityEngine:
         }
 
     def generate_report(self, file_info: Dict[str, Any], scan_results: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Generates the complete Explainable Security Report JSON payload.
-        """
         assessment = self.calculate_risk_score(scan_results)
 
         return {
@@ -157,7 +125,3 @@ class RiskAndExplainabilityEngine:
             "assessment": assessment,
             "detailed_scanner_outputs": scan_results
         }
-
-
-if __name__ == "__main__":
-    print("[+] Risk Assessment & Explainable Security Report Engine loaded.")

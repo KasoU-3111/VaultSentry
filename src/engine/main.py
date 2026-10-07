@@ -1,14 +1,17 @@
-"""
-VaultSentry Engine Entry Point
-Accepts command-line arguments and outputs the final JSON Security Report to stdout/file.
-"""
-
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
+# Ensure project root is present in sys.path regardless of execution entry point
+CURRENT_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = CURRENT_DIR.parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
 from src.engine.pipeline import PipelineController
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="VaultSentry Static Analysis Engine")
@@ -34,6 +37,7 @@ def main() -> None:
     else:
         # Output raw JSON to standard output for IPC consumption
         print(report_json)
+
 
 if __name__ == "__main__":
     main()

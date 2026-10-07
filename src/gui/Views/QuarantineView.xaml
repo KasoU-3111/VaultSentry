@@ -1,0 +1,138 @@
+<UserControl x:Class="VaultSentry.Client.Views.QuarantineView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:converters="clr-namespace:VaultSentry.Client.Converters"
+             mc:Ignorable="d" 
+             d:DesignHeight="700" d:DesignWidth="950">
+
+    <UserControl.Resources>
+        <!-- Self-contained converter definitions to avoid resource lookup faults -->
+        <converters:StringToVisibilityConverter x:Key="LocalStringToVisConverter" />
+        <converters:SeverityToBrushConverter x:Key="LocalSeverityToBrushConverter" />
+        <converters:BooleanToVisibilityConverter x:Key="LocalBoolToVisConverter" />
+    </UserControl.Resources>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="30">
+            <!-- Header Title -->
+            <TextBlock Text="Virtual Quarantine Vault" 
+                       FontSize="26" 
+                       FontWeight="Bold" 
+                       Foreground="#FFFFFF" 
+                       Margin="0,0,0,10" />
+
+            <TextBlock Text="Isolated repository of staged downloads, active threats, and audit logs." 
+                       FontSize="13" 
+                       Foreground="#94A3B8" 
+                       Margin="0,0,0,25" />
+
+            <!-- Status & Feedback Banner -->
+            <Border Background="#141C2E" BorderBrush="#334155" BorderThickness="1" CornerRadius="6" Padding="15" Margin="0,0,0,20"
+                    Visibility="{Binding StatusMessage, Converter={StaticResource LocalStringToVisConverter}}">
+                <TextBlock Text="{Binding StatusMessage}" Foreground="#38BDF8" FontWeight="SemiBold" FontSize="13" />
+            </Border>
+
+            <!-- Quarantine Ledger Card -->
+            <Border Background="#141C2E" CornerRadius="8" Padding="20" Margin="0,0,0,20">
+                <StackPanel>
+                    <Grid Margin="0,0,0,15">
+                        <TextBlock Text="Quarantined Files &amp; Payloads" FontSize="16" FontWeight="Bold" Foreground="#FFFFFF" />
+                        <Button Content="Refresh Vault" 
+                                Command="{Binding LoadQuarantineDataCommand}" 
+                                HorizontalAlignment="Right"
+                                Background="#334155" 
+                                Foreground="#FFFFFF" 
+                                FontWeight="SemiBold" 
+                                Padding="12,6" 
+                                BorderThickness="0" 
+                                Cursor="Hand" />
+                    </Grid>
+
+                    <DataGrid ItemsSource="{Binding QuarantinedItems}" 
+                              SelectedItem="{Binding SelectedItem}"
+                              AutoGenerateColumns="False" 
+                              IsReadOnly="True" 
+                              SelectionMode="Single"
+                              MinHeight="250"
+                              Background="Transparent" 
+                              RowBackground="#0F172A" 
+                              AlternatingRowBackground="#141C2E" 
+                              GridLinesVisibility="None" 
+                              HeadersVisibility="Column" 
+                              BorderThickness="0" 
+                              Foreground="#FFFFFF" 
+                              FontSize="12">
+                        <DataGrid.ColumnHeaderStyle>
+                            <Style TargetType="DataGridColumnHeader">
+                                <Setter Property="Background" Value="#1E293B" />
+                                <Setter Property="Foreground" Value="#94A3B8" />
+                                <Setter Property="FontWeight" Value="Bold" />
+                                <Setter Property="Padding" Value="10,8" />
+                                <Setter Property="BorderThickness" Value="0" />
+                            </Style>
+                        </DataGrid.ColumnHeaderStyle>
+                        <DataGrid.RowStyle>
+                            <Style TargetType="DataGridRow">
+                                <Setter Property="Margin" Value="0,2" />
+                                <Setter Property="Padding" Value="6" />
+                            </Style>
+                        </DataGrid.RowStyle>
+                        <DataGrid.Columns>
+                            <DataGridTemplateColumn Header="Status" Width="130">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Border Background="{Binding Status, Converter={StaticResource LocalSeverityToBrushConverter}}" 
+                                                CornerRadius="4" Padding="6,2" HorizontalAlignment="Left" Margin="4">
+                                            <TextBlock Text="{Binding Status}" Foreground="#FFFFFF" FontWeight="Bold" FontSize="11" />
+                                        </Border>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTextColumn Header="Original Path" Binding="{Binding OriginalPath}" Width="280" />
+                            <DataGridTextColumn Header="SHA256 Digest" Binding="{Binding Sha256}" Width="240" FontFamily="Consolas" />
+                            <DataGridTextColumn Header="Staged Timestamp" Binding="{Binding CreatedAt}" Width="*" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </StackPanel>
+            </Border>
+
+            <!-- Action Controls Panel -->
+            <Border Background="#141C2E" CornerRadius="8" Padding="20">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                        <TextBlock Text="Selected Payload Remediation" FontSize="14" FontWeight="Bold" Foreground="#FFFFFF" />
+                        <TextBlock Text="Perform authorized file release or DoD-grade cryptographic sanitization." FontSize="12" Foreground="#94A3B8" Margin="0,2,0,0" />
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <Button Content="Release to Local Storage" 
+                                Command="{Binding ReleaseSelectedFileCommand}" 
+                                Background="#0284C7" 
+                                Foreground="#FFFFFF" 
+                                FontWeight="Bold" 
+                                Padding="15,10" 
+                                Margin="0,0,12,0" 
+                                BorderThickness="0" 
+                                Cursor="Hand" />
+
+                        <Button Content="Shred &amp; Wipe Payload" 
+                                Command="{Binding ShredSelectedPayloadCommand}" 
+                                Background="#DC2626" 
+                                Foreground="#FFFFFF" 
+                                FontWeight="Bold" 
+                                Padding="15,10" 
+                                BorderThickness="0" 
+                                Cursor="Hand" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

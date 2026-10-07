@@ -1,127 +1,100 @@
 """
-VaultSentry - Scan Engine Pipeline Controller
-Orchestrates file staging, scanner execution, and JSON report generation.
+VaultSentry - Core Analysis Pipeline Controller
+Orchestrates Virtual Quarantine Space (VQS) staging, dynamically executes scanner plugins
+via PluginManager, and aggregates explainable security reports via Risk Engine.
 """
 
-import json
-import logging
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any, Dict
 
-from src.engine.config import LOGS_DIR
-from src.engine.vqs import VirtualQuarantineSpace
-from src.engine.scanners.identity_scanner import IdentityIntegrityScanner
-from src.engine.scanners.pe_scanner import PEScanner
-from src.engine.scanners.document_scanner import DocumentScanner
+from src.engine.plugins.plugin_manager import PluginManager
 from src.engine.scanners.archive_scanner import ArchiveScanner
-from src.engine.scanners.malware_scanner import MalwareScanner
+from src.engine.scanners.document_scanner import DocumentScanner
 from src.engine.scanners.heuristic_scanner import HeuristicScanner
+from src.engine.scanners.identity_scanner import IdentityIntegrityScanner
+from src.engine.scanners.malware_scanner import MalwareScanner
+from src.engine.scanners.pe_scanner import PEScanner
 from src.engine.scanners.risk_explainability import RiskAndExplainabilityEngine
+from src.engine.scanners.shortcut_script_scanner import ShortcutScriptScanner
+from src.engine.scanners.disk_image_scanner import DiskImageScanner
+from src.engine.vqs import VirtualQuarantineSpace
+from src.engine.scanners.msi_scanner import MSIScanner
 
-# Logging Configuration
-LOGS_DIR.mkdir(parents=True, exist_ok=True)
-logging.basicConfig(
-    filename=LOGS_DIR / "pipeline.log",
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] (Pipeline): %(message)s"
-)
 
 class PipelineController:
-    """
-    Central orchestration engine for VaultSentry static security scanning.
-    """
+    """Enterprise scan orchestrator and quarantine workflow coordinator."""
 
     def __init__(self) -> None:
         self.vqs = VirtualQuarantineSpace()
-        self.identity_scanner = IdentityIntegrityScanner()
-        self.pe_scanner = PEScanner()
-        self.document_scanner = DocumentScanner()
-        self.archive_scanner = ArchiveScanner()
-        self.malware_scanner = MalwareScanner()
-        self.heuristic_scanner = HeuristicScanner()
-        self.risk_explainability_engine = RiskAndExplainabilityEngine()
+        self.risk_engine = RiskAndExplainabilityEngine()
+        self.plugin_manager = PluginManager()
+        self._initialize_plugins()
 
-    def run_pipeline(self, target_file_path: str) -> Dict[str, Any]:
-        """
-        Runs the end-to-end VaultSentry analysis workflow on a file.
-        """
-        logging.info(f"Initiating pipeline scan for target: {target_file_path}")
+    def _initialize_plugins(self) -> None:
+        """Discovers and registers all analysis scanner plugins."""
+        self.plugin_manager.register_plugin(IdentityIntegrityScanner())
+        self.plugin_manager.register_plugin(ShortcutScriptScanner())
+        self.plugin_manager.register_plugin(PEScanner())
+        self.plugin_manager.register_plugin(DocumentScanner())
+        self.plugin_manager.register_plugin(ArchiveScanner())
+        self.plugin_manager.register_plugin(MalwareScanner())
+        self.plugin_manager.register_plugin(HeuristicScanner())
+        self.plugin_manager.register_plugin(DiskImageScanner())
+        self.plugin_manager.register_plugin(MSIScanner())
 
-        # Step 1: Stage file inside Virtual Quarantine Space
-        try:
-            quarantine_manifest = self.vqs.stage_file(target_file_path)
-            staged_path = Path(quarantine_manifest["staged_path"])
-        except Exception as e:
-            logging.error(f"Failed to quarantine target file: {str(e)}")
+    def run_pipeline(self, raw_file_path: str) -> Dict[str, Any]:
+        """
+        Executes end-to-end static security analysis pipeline within VQS isolation.
+        """
+        source_path = Path(raw_file_path).resolve()
+        if not source_path.is_file():
             return {
                 "status": "ERROR",
-                "error_stage": "VQS_STAGING",
-                "message": f"Quarantine initialization failed: {str(e)}"
+                "message": f"Target file does not exist: {raw_file_path}",
+                "verdict": "ERROR",
+                "risk_score": 0,
+                "findings": []
             }
 
-        scan_outputs: Dict[str, Any] = {}
+        # 1. Stage file into Virtual Quarantine Space (VQS)
+        staging_info = self.vqs.stage_file(source_path)
+        isolated_path = Path(staging_info["staged_path"])
+        quarantine_id = staging_info.get("quarantine_id", "UNKNOWN_SESSION")
 
-        # Step 2: Identity & Integrity Scan
         try:
-            scan_outputs["identity_integrity"] = self.identity_scanner.inspect_identity_integrity(str(staged_path))
-        except Exception as e:
-            scan_outputs["identity_integrity"] = {"error": f"Identity scan failed: {str(e)}"}
+            # 2. Execute Dynamic Scanner Plugins via PluginManager
+            pipeline_result = self.plugin_manager.execute_pipeline(isolated_path)
+            aggregated_findings = pipeline_result.get("aggregated_findings", [])
 
-        # Step 3: Conditional Structural Scanners
-        # PE Scanner
-        try:
-            pe_res = self.pe_scanner.scan_pe(str(staged_path))
-            scan_outputs["pe"] = pe_res
-        except Exception as e:
-            scan_outputs["pe"] = {"error": f"PE scan failed: {str(e)}"}
+            # 3. Evaluate Risk and Compute Explainable Assessment
+            assessment = self.risk_engine.assess_risk(aggregated_findings)
 
-        # Document Scanner
-        try:
-            doc_res = self.document_scanner.scan_document(str(staged_path))
-            scan_outputs["document"] = doc_res
-        except Exception as e:
-            scan_outputs["document"] = {"error": f"Document scan failed: {str(e)}"}
+            # 4. Extract Hashes and Identity for Response DTO
+            identity_report = pipeline_result["reports"].get("IdentityScanner", {})
+            hashes = identity_report.get("hashes", {})
+            identity = identity_report.get("identity", {})
 
-        # Archive Scanner
-        try:
-            arch_res = self.archive_scanner.scan_archive(str(staged_path))
-            scan_outputs["archive"] = arch_res
-        except Exception as e:
-            scan_outputs["archive"] = {"error": f"Archive scan failed: {str(e)}"}
-
-        # Step 4: Malware & Signature Scanner (YARA / ClamAV)
-        try:
-            scan_outputs["malware"] = self.malware_scanner.scan_malware(str(staged_path))
-        except Exception as e:
-            scan_outputs["malware"] = {"error": f"Malware scan failed: {str(e)}"}
-
-        # Step 5: Heuristic Scanner
-        try:
-            prior_pe = scan_outputs.get("pe", {})
-            scan_outputs["heuristics"] = self.heuristic_scanner.scan_heuristics(
-                str(staged_path),
-                prior_metadata=prior_pe if prior_pe.get("is_pe", False) else None
-            )
-        except Exception as e:
-            scan_outputs["heuristics"] = {"error": f"Heuristic scan failed: {str(e)}"}
-
-        # Step 6: Generate Risk Assessment & Explainable Security Report
-        try:
-            final_report = self.risk_explainability_engine.generate_report(
-                file_info=quarantine_manifest,
-                scan_results=scan_outputs
-            )
-            logging.info(f"Pipeline successfully completed for UUID {quarantine_manifest['uuid']}. Risk Score: {final_report['assessment']['risk_score']}")
-            return final_report
-
-        except Exception as e:
-            logging.error(f"Failed to generate final report: {str(e)}")
             return {
-                "status": "ERROR",
-                "error_stage": "REPORT_GENERATION",
-                "message": f"Report synthesis failed: {str(e)}"
+                "status": "SUCCESS",
+                "file_name": source_path.name,
+                "file_size_bytes": isolated_path.stat().st_size,
+                "quarantine_id": quarantine_id,
+                "staged_path": str(isolated_path),
+                "hashes": hashes,
+                "identity": identity,
+                "verdict": assessment["verdict"],
+                "risk_score": assessment["risk_score"],
+                "recommendation": assessment["recommendation"],
+                "severity_breakdown": assessment.get("severity_breakdown", {}),
+                "finding_count": assessment["finding_count"],
+                "findings": assessment["findings"],
+                "scanner_reports": pipeline_result["reports"]
             }
+
+        finally:
+            # Staged item retained in VQS until user/client issues a release or purge command
+            pass
 
 
 if __name__ == "__main__":
-    print("[+] Pipeline Controller module loaded.")
+    print("[+] VaultSentry Pipeline Controller initialized.")

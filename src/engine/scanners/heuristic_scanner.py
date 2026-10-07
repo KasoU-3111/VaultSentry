@@ -1,98 +1,171 @@
 """
 VaultSentry - Module 8: Heuristic Analysis Engine
-Detects suspicious traits, double extensions, packed executables, 
-script obfuscation (Base64/IEX), and high-risk API call combinations.
+Detects evasive structural traits, double extensions, RTLO attacks,
+script obfuscation (Base64/IEX), and correlated suspicious indicators.
 """
 
+import math
 import re
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Any, Dict, List
 
-# Common obfuscation regex patterns in scripts/documents
-BASE64_EXEC_PATTERN = re.compile(r'(?:[A-Za-z0-9+/]{4}){10,}(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?')
-SUSPICIOUS_SCRIPT_CMDS = [
-    "invoke-expression", "iex", "downloadstring", "downloadfile",
-    "wscript.shell", "cmd.exe /c", "powershell -enc", "-nop -w hidden"
-]
+from src.engine.plugins.base_scanner import BaseScanner
 
-class HeuristicScanner:
-    """
-    Evaluates file characteristics to generate heuristic threat indicators.
-    """
 
-    def scan_heuristics(self, file_path_str: str, prior_metadata: Dict[str, Any] | None = None) -> Dict[str, Any]:
-        """
-        Runs heuristic evaluation across file structures and byte traits.
-        
-        :param file_path_str: Local target path.
-        :param prior_metadata: Optional dict containing results from PE or Document scanners.
-        """
-        path = Path(file_path_str).resolve()
-        if not path.exists() or not path.is_file():
-            raise FileNotFoundError(f"Target file for heuristic analysis does not exist: {file_path_str}")
+class HeuristicScanner(BaseScanner):
+    """Enterprise static heuristic analysis and evasion detection engine."""
 
-        heuristic_flags: List[str] = []
-        threat_score = 0  # Dynamic internal heuristic score (0 - 100)
+    MAX_SCRIPT_INSPECT_BYTES = 2 * 1024 * 1024
 
-        filename = path.name.lower()
-        suffixes = path.suffixes
+    SUSPICIOUS_EXECUTABLE_EXTENSIONS = {
+        ".exe", ".scr", ".pif", ".bat", ".cmd", ".vbs", ".ps1", ".js", ".hta", ".wsf", ".cpl", ".com"
+    }
 
-        # 1. Double Extension / Spoofing Heuristics
-        if len(suffixes) > 1:
-            last_ext = suffixes[-1].lower()
-            second_last_ext = suffixes[-2].lower()
-            if last_ext in [".exe", ".scr", ".pif", ".bat", ".ps1", ".vbs"] and second_last_ext in [".pdf", ".doc", ".docx", ".jpg", ".png", ".txt", ".zip"]:
-                heuristic_flags.append(f"HIGH_RISK_DOUBLE_EXTENSION: Disguised as '{second_last_ext}' but executes as '{last_ext}'.")
-                threat_score += 40
+    DECEPTIVE_DOCUMENT_EXTENSIONS = {
+        ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
+        ".jpg", ".jpeg", ".png", ".txt", ".rtf", ".mp4", ".zip", ".7z"
+    }
 
-        # 2. Executable Name Impersonation Check
-        sys_impersonation_names = ["svchost.exe", "lsass.exe", "csrss.exe", "explorer.exe", "taskmgr.exe"]
-        if filename in sys_impersonation_names and "system32" not in str(path).lower():
-            heuristic_flags.append(f"CRITICAL_IMPERSONATION: Binary uses core Windows process name '{filename}' outside System32.")
-            threat_score += 50
+    CRITICAL_SYSTEM_NAMES = {
+        "svchost.exe", "lsass.exe", "csrss.exe", "services.exe",
+        "smss.exe", "explorer.exe", "taskmgr.exe", "conhost.exe", "spoolsv.exe"
+    }
 
-        # 3. Script Content Obfuscation Heuristics
-        text_extensions = [".ps1", ".vbs", ".bat", ".cmd", ".js", ".html"]
-        if path.suffix.lower() in text_extensions:
-            try:
-                content = path.read_text(errors='ignore').lower()
-                
-                # Check for suspicious command triggers
-                for cmd in SUSPICIOUS_SCRIPT_CMDS:
-                    if cmd in content:
-                        heuristic_flags.append(f"SUSPICIOUS_SCRIPT_CMD: Contains suspicious command pattern '{cmd}'.")
-                        threat_score += 15
+    SUSPICIOUS_SCRIPT_PATTERNS = [
+        (re.compile(r"(?:invoke-expression|iex)\b", re.IGNORECASE), "PowerShell In-Memory Execution Hook (IEX)"),
+        (re.compile(r"(?:downloadstring|downloadfile)\b", re.IGNORECASE), "Web Payload Download Cradle"),
+        (re.compile(r"wscript\.shell", re.IGNORECASE), "WScript Shell Invocation"),
+        (re.compile(r"powershell(?:\.exe)?\s+.*-(?:enc|encodedcommand)\b", re.IGNORECASE), "Encoded PowerShell Execution"),
+        (re.compile(r"-(?:nop|noprofile)\s+.*-w(?:indowstyle)?\s+hidden\b", re.IGNORECASE), "Hidden Window PowerShell Launch")
+    ]
 
-                # Base64 string detection
-                if BASE64_EXEC_PATTERN.search(content):
-                    heuristic_flags.append("OBFUSCATION_BASE64: Detected long Base64 encoded payload blocks in script.")
-                    threat_score += 25
+    BASE64_REGEX = re.compile(r"[A-Za-z0-9+/]{40,}={0,2}")
 
-            except Exception as e:
-                heuristic_flags.append(f"SCRIPT_READ_ERROR: Could not perform text heuristic analysis: {str(e)}")
+    def __init__(self) -> None:
+        super().__init__(scanner_id="HeuristicScanner", priority=80)
 
-        # 4. Integrate Prior Scanner Heuristics (PE entropy, sections, APIs)
-        if prior_metadata:
-            if prior_metadata.get("has_high_entropy", False):
-                heuristic_flags.append("HIGH_ENTROPY_PACKED: Binary exhibits high entropy (packed/encrypted sections).")
-                threat_score += 30
-            
-            flagged_apis = prior_metadata.get("flagged_apis", [])
-            if len(flagged_apis) >= 3:
-                heuristic_flags.append(f"SUSPICIOUS_API_COMBO: Multiple process injection APIs imported ({len(flagged_apis)} detected).")
-                threat_score += 20
+    def is_applicable(self, path: Path, context: Dict[str, Any]) -> bool:
+        return True
 
-        # Normalize threat score
-        threat_score = min(threat_score, 100)
+    def _calculate_string_entropy(self, data: str) -> float:
+        if not data:
+            return 0.0
+        prob = [float(data.count(c)) / len(data) for c in set(data)]
+        return -sum(p * math.log2(p) for p in prob)
+
+    def _inspect_naming_anomalies(self, path: Path) -> List[Dict[str, str]]:
+        findings: List[Dict[str, str]] = []
+        name = path.name
+        name_lower = name.lower()
+
+        # RTLO Check
+        if "\u202e" in name:
+            findings.append({
+                "severity": "CRITICAL",
+                "category": "Heuristics",
+                "finding": "Right-to-Left Override (RTLO) Evasion",
+                "explanation": "Filename contains Unicode RTLO character (U+202E) used to visually mask the actual file extension."
+            })
+
+        # Double Extension Masquerading
+        clean_parts = [p.strip().lower() for p in name.split(".") if p.strip()]
+        if len(clean_parts) >= 3:
+            second_last = f".{clean_parts[-2]}"
+            last = f".{clean_parts[-1]}"
+            if last in self.SUSPICIOUS_EXECUTABLE_EXTENSIONS and second_last in self.DECEPTIVE_DOCUMENT_EXTENSIONS:
+                findings.append({
+                    "severity": "CRITICAL",
+                    "category": "Heuristics",
+                    "finding": "Deceptive Double Extension Masquerade",
+                    "explanation": f"File disguises an executable ('{last}') as a safe document format ('{second_last}')."
+                })
+
+        # Process Impersonation Check
+        if name_lower in self.CRITICAL_SYSTEM_NAMES:
+            path_str_lower = str(path).lower()
+            if not ("c:\\windows\\system32" in path_str_lower or "c:\\windows\\syswow64" in path_str_lower):
+                findings.append({
+                    "severity": "HIGH",
+                    "category": "Heuristics",
+                    "finding": "Critical System Binary Impersonation",
+                    "explanation": f"File matches protected system binary name '{name}' outside system directory."
+                })
+
+        return findings
+
+    def _inspect_script_content(self, path: Path) -> List[Dict[str, str]]:
+        findings: List[Dict[str, str]] = []
+        script_extensions = {".ps1", ".vbs", ".bat", ".cmd", ".js", ".hta", ".wsf", ".html", ".htm"}
+        if path.suffix.lower() not in script_extensions:
+            return findings
+
+        try:
+            with open(path, "rb") as f:
+                raw_bytes = f.read(self.MAX_SCRIPT_INSPECT_BYTES)
+
+            text_content = raw_bytes.decode("utf-8", errors="ignore")
+
+            for pattern, desc in self.SUSPICIOUS_SCRIPT_PATTERNS:
+                if pattern.search(text_content):
+                    findings.append({
+                        "severity": "HIGH",
+                        "category": "Heuristics",
+                        "finding": f"Suspicious Command: {desc}",
+                        "explanation": f"Script source contains high-risk execution pattern: {desc}"
+                    })
+
+            b64_matches = self.BASE64_REGEX.findall(text_content)
+            for match in b64_matches:
+                entropy = self._calculate_string_entropy(match)
+                if len(match) > 80 and entropy > 4.5:
+                    findings.append({
+                        "severity": "HIGH",
+                        "category": "Heuristics",
+                        "finding": "Obfuscated High-Entropy Base64 Block",
+                        "explanation": f"Detected dense Base64 block ({len(match)} chars, entropy {entropy:.2f}) indicating packed payload."
+                    })
+                    break
+        except Exception as ex:
+            findings.append({
+                "severity": "LOW",
+                "category": "Heuristics",
+                "finding": "Script Analysis Error",
+                "explanation": f"Could not complete script heuristics: {str(ex)}"
+            })
+
+        return findings
+
+    def _correlate_context(self, context: Dict[str, Any]) -> List[Dict[str, str]]:
+        findings: List[Dict[str, str]] = []
+        pe_report = context.get("PEScanner", {})
+
+        if pe_report.get("has_high_entropy", False):
+            findings.append({
+                "severity": "HIGH",
+                "category": "Heuristics",
+                "finding": "Packed / Encrypted Binary Structure",
+                "explanation": "Binary sections exhibit entropy >= 7.2, strongly indicating crypter, packer, or encrypted code sections."
+            })
+
+        flagged_apis = pe_report.get("flagged_apis", [])
+        if len(flagged_apis) >= 3:
+            findings.append({
+                "severity": "HIGH",
+                "category": "Heuristics",
+                "finding": f"Process Injection API Cluster ({len(flagged_apis)} detected)",
+                "explanation": f"PE imports multiple APIs commonly combined for memory injection: {', '.join(flagged_apis[:4])}"
+            })
+
+        return findings
+
+    def scan(self, path: Path, context: Dict[str, Any]) -> Dict[str, Any]:
+        findings: List[Dict[str, str]] = []
+        findings.extend(self._inspect_naming_anomalies(path))
+        findings.extend(self._inspect_script_content(path))
+        findings.extend(self._correlate_context(context))
 
         return {
-            "file_name": path.name,
-            "heuristic_score": threat_score,
-            "flags": heuristic_flags,
-            "flag_count": len(heuristic_flags),
-            "status": "COMPLETED"
+            "scanner": self.scanner_id,
+            "findings_count": len(findings),
+            "findings": findings
         }
-
-
-if __name__ == "__main__":
-    print("[+] Heuristic Analysis Engine module loaded.")
