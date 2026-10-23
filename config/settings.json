@@ -1,0 +1,14 @@
+{
+  "VaultSentry": {
+    "Environment": "Development",
+    "Engine": {
+      "RelativePath": "src/VaultSentry.Engine/main.py",
+      "ModuleName": "src.VaultSentry.Engine.main",
+      "TimeoutSeconds": 30
+    },
+    "Quarantine": {
+      "StoragePath": "quarantine_storage",
+      "AutoPurgeDays": 30
+    }
+  }
+}

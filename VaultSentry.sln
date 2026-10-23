@@ -1,0 +1,34 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{331A4AB4-0801-4705-A12D-4C43CBA64853}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VaultSentry.Client", "src\VaultSentry.Client\VaultSentry.Client.csproj", "{D66E1D28-C47E-496F-A93C-6674D8DEF00D}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VaultSentry.Core", "src\VaultSentry.Core\VaultSentry.Core.csproj", "{95ED18CF-E87C-43BA-83AA-D3473F58EA72}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{D66E1D28-C47E-496F-A93C-6674D8DEF00D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D66E1D28-C47E-496F-A93C-6674D8DEF00D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D66E1D28-C47E-496F-A93C-6674D8DEF00D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D66E1D28-C47E-496F-A93C-6674D8DEF00D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{95ED18CF-E87C-43BA-83AA-D3473F58EA72}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{95ED18CF-E87C-43BA-83AA-D3473F58EA72}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{95ED18CF-E87C-43BA-83AA-D3473F58EA72}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{95ED18CF-E87C-43BA-83AA-D3473F58EA72}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{D66E1D28-C47E-496F-A93C-6674D8DEF00D} = {331A4AB4-0801-4705-A12D-4C43CBA64853}
+		{95ED18CF-E87C-43BA-83AA-D3473F58EA72} = {331A4AB4-0801-4705-A12D-4C43CBA64853}
+	EndGlobalSection
+EndGlobal
