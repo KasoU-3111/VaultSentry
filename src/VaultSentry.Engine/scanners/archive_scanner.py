@@ -5,7 +5,7 @@ Includes volumetric defenses against Decompression Quines (Zip Bombs) and flags 
 """
 
 import zipfile
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Any, Dict, List, Optional, Tuple  # <-- FIXED: Added Tuple import
 
 # Third-party archive dependencies
@@ -37,6 +37,27 @@ class ArchiveScanner(BaseScanner):
         ext = path.suffix.lower()
         return ext in {".zip", ".rar", ".7z"}
 
+    @staticmethod
+    def _inspect_member_path(member_path: str, findings: List[Dict[str, str]]) -> None:
+        normalized_path = member_path.replace("\\", "/")
+        windows_path = PureWindowsPath(member_path)
+        has_traversal = (
+            windows_path.is_absolute()
+            or bool(windows_path.drive)
+            or any(part == ".." for part in normalized_path.split("/"))
+        )
+
+        if has_traversal and not any(
+            finding["finding"] == "Archive Path Traversal (Zip Slip) Detected"
+            for finding in findings
+        ):
+            findings.append({
+                "severity": "CRITICAL",
+                "category": "Archive Analysis",
+                "finding": "Archive Path Traversal (Zip Slip) Detected",
+                "explanation": f"Archive contains a member path that escapes its extraction directory: {member_path}"
+            })
+
     def _analyze_zip(self, path: Path, archive_size: int) -> Tuple[List[Dict[str, str]], int, int, bool]:
         findings: List[Dict[str, str]] = []
         total_uncompressed = 0
@@ -48,6 +69,7 @@ class ArchiveScanner(BaseScanner):
                 for info in zf.infolist():
                     file_count += 1
                     total_uncompressed += info.file_size
+                    self._inspect_member_path(info.filename, findings)
 
                     # Check for encryption evasion
                     if getattr(info, 'flag_bits', 0) & 0x1:
@@ -86,6 +108,7 @@ class ArchiveScanner(BaseScanner):
                 for info in rf.infolist():
                     file_count += 1
                     total_uncompressed += info.file_size
+                    self._inspect_member_path(info.filename, findings)
 
                     if file_count > self.MAX_FILE_COUNT:
                         findings.append({
@@ -119,6 +142,7 @@ class ArchiveScanner(BaseScanner):
                 for info in sz.list():
                     file_count += 1
                     total_uncompressed += info.uncompressed
+                    self._inspect_member_path(info.filename, findings)
 
                     if file_count > self.MAX_FILE_COUNT:
                         findings.append({

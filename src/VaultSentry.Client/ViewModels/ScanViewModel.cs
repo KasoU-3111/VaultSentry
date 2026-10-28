@@ -1,9 +1,14 @@
 using System;
+using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Win32;
+using VaultSentry.Client.Models;
 using VaultSentry.Client.Services;
+using VaultSentry.Client.Utils;
 using VaultSentry.Core.Interfaces;
+using VaultSentry.Core.Models;
 
 namespace VaultSentry.Client.ViewModels
 {
@@ -78,11 +83,57 @@ namespace VaultSentry.Client.ViewModels
             {
                 string jsonResult = await _engineBridge.RunScanAsync(TargetFilePath);
                 _fileAnalysisViewModel.PopulateFromScanResultJson(jsonResult);
+
+                if (!string.IsNullOrEmpty(_fileAnalysisViewModel.ErrorMessage))
+                {
+                    return;
+                }
+
+                using var document = JsonDocument.Parse(jsonResult);
+                if (!document.RootElement.TryGetProperty("status", out var status) ||
+                    status.ValueKind != JsonValueKind.String ||
+                    status.GetString() != "SUCCESS")
+                {
+                    return;
+                }
+
+                var jsonOptions = new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                };
+                jsonOptions.Converters.Add(new NullToEmptyStringJsonConverter());
+
+                SecurityReport? report = JsonSerializer.Deserialize<SecurityReport>(jsonResult, jsonOptions);
+                if (report is null ||
+                    string.IsNullOrWhiteSpace(report.QuarantineId) ||
+                    string.IsNullOrWhiteSpace(report.StagedPath) ||
+                    report.Hashes is null ||
+                    report.Identity is null)
+                {
+                    throw new InvalidOperationException("The successful scan report is missing required persistence data.");
+                }
+
+                var findings = (report.Findings ?? [])
+                    .Select(finding => new SecurityFindingModel
+                    {
+                        Severity = finding.Severity,
+                        Category = finding.Category,
+                        Finding = finding.Finding,
+                        Explanation = finding.Explanation
+                    });
+
+                try
+                {
+                    await _repository.RecordScanAsync(report, TargetFilePath, findings);
+                }
+                catch (Exception ex)
+                {
+                    _fileAnalysisViewModel.ErrorMessage = $"Scan completed, but the report could not be saved: {ex.Message}";
+                }
             }
             catch (Exception ex)
             {
-                // Push IPC dispatch errors into the unified dashboard state
-                _fileAnalysisViewModel.ErrorMessage = $"IPC Dispatch Error: {ex.Message}";
+                _fileAnalysisViewModel.ErrorMessage = $"Scan report processing error: {ex.Message}";
                 _fileAnalysisViewModel.Verdict = "ERROR";
                 _fileAnalysisViewModel.RiskScore = 0;
             }

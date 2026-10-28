@@ -79,6 +79,41 @@ namespace VaultSentry.Client.Services
                 );
             ";
             cmd.ExecuteNonQuery();
+
+            MigrateScanHistorySchema(connection);
+        }
+
+        private static void MigrateScanHistorySchema(SqliteConnection connection)
+        {
+            using var columnsCommand = connection.CreateCommand();
+            columnsCommand.CommandText = "PRAGMA table_info(scan_history);";
+
+            bool hasQuarantineId = false;
+            using (var reader = columnsCommand.ExecuteReader())
+            {
+                while (reader.Read())
+                {
+                    if (string.Equals(reader.GetString(1), "quarantine_id", StringComparison.OrdinalIgnoreCase))
+                    {
+                        hasQuarantineId = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!hasQuarantineId)
+            {
+                using var alterCommand = connection.CreateCommand();
+                alterCommand.CommandText = "ALTER TABLE scan_history ADD COLUMN quarantine_id TEXT;";
+                alterCommand.ExecuteNonQuery();
+            }
+
+            using var indexCommand = connection.CreateCommand();
+            indexCommand.CommandText = @"
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_scan_history_quarantine_id
+                ON scan_history (quarantine_id);
+            ";
+            indexCommand.ExecuteNonQuery();
         }
 
         public async Task RecordScanAsync(SecurityReport report, string originalPath, IEnumerable<SecurityFindingModel> findings)

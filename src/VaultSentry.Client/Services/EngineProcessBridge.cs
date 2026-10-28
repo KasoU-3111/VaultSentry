@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Text;
 using System.Threading.Tasks;
+using VaultSentry.Client.Models;
 using VaultSentry.Core.Interfaces;
 
 namespace VaultSentry.Client.Services
@@ -16,26 +17,22 @@ namespace VaultSentry.Client.Services
         private readonly string _workspaceRoot;
         private readonly string _pythonExecutable;
         private readonly string _engineMainScript;
+        private readonly int _timeoutMilliseconds;
 
         public EngineProcessBridge(string workspaceRoot)
+            : this(workspaceRoot, VaultSentrySettings.Load(workspaceRoot))
+        {
+        }
+
+        public EngineProcessBridge(string workspaceRoot, VaultSentrySettings settings)
         {
             _workspaceRoot = string.IsNullOrWhiteSpace(workspaceRoot) 
                 ? AppDomain.CurrentDomain.BaseDirectory 
                 : workspaceRoot;
 
             _pythonExecutable = "python.exe";
-            _engineMainScript = ResolveEngineScriptPath(_workspaceRoot);
-        }
-
-        private static string ResolveEngineScriptPath(string root)
-        {
-            string candidate1 = Path.Combine(root, "src", "VaultSentry.Engine", "main.py");
-            if (File.Exists(candidate1)) return candidate1;
-
-            string candidate2 = Path.Combine(root, "VaultSentry.Engine", "main.py");
-            if (File.Exists(candidate2)) return candidate2;
-
-            return Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, @"..\..\..\..\SRC\VaultSentry.Engine\main.py"));
+            _engineMainScript = settings.ResolveEnginePath(_workspaceRoot);
+            _timeoutMilliseconds = checked(settings.Engine!.TimeoutSeconds * 1000);
         }
 
         public async Task<string> RunScanAsync(string filePath)
@@ -57,7 +54,6 @@ namespace VaultSentry.Client.Services
                     var startInfo = new ProcessStartInfo
                     {
                         FileName = _pythonExecutable,
-                        Arguments = $"\"{_engineMainScript}\" \"{filePath}\"",
                         UseShellExecute = false,
                         RedirectStandardOutput = true,
                         RedirectStandardError = true,
@@ -66,6 +62,8 @@ namespace VaultSentry.Client.Services
                         StandardErrorEncoding = Encoding.UTF8,
                         WorkingDirectory = Path.GetDirectoryName(_engineMainScript) ?? string.Empty
                     };
+                    startInfo.ArgumentList.Add(_engineMainScript);
+                    startInfo.ArgumentList.Add(filePath);
 
                     using var process = new Process { StartInfo = startInfo };
                     var outputBuilder = new StringBuilder();
@@ -85,12 +83,12 @@ namespace VaultSentry.Client.Services
                     process.BeginOutputReadLine();
                     process.BeginErrorReadLine();
 
-                    bool exited = process.WaitForExit(30000); // 30-second timeout
+                    bool exited = process.WaitForExit(_timeoutMilliseconds);
 
                     if (!exited)
                     {
                         process.Kill(true);
-                        return CreateErrorJson("Scan Execution Timeout: Engine exceeded 30 seconds limit.");
+                        return CreateErrorJson($"Scan Execution Timeout: Engine exceeded {_timeoutMilliseconds / 1000} seconds.");
                     }
 
                     string stdout = outputBuilder.ToString().Trim();

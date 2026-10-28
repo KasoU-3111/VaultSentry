@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Windows;
 using Microsoft.Extensions.DependencyInjection;
+using VaultSentry.Client.Models;
 using VaultSentry.Client.Services;
 using VaultSentry.Client.Services.Interfaces;
 using VaultSentry.Client.ViewModels;
@@ -29,10 +30,11 @@ namespace VaultSentry.Client
             {
                 // 1. Resolve Workspace Root dynamically across all build/run configurations
                 string workspaceRoot = ResolveWorkspaceRoot();
+                VaultSentrySettings settings = VaultSentrySettings.Load(workspaceRoot);
 
                 // 2. Build Dependency Injection Service Container
                 var serviceCollection = new ServiceCollection();
-                ConfigureServices(serviceCollection, workspaceRoot);
+                ConfigureServices(serviceCollection, workspaceRoot, settings);
                 _serviceProvider = serviceCollection.BuildServiceProvider();
                 ServiceProvider = _serviceProvider;
 
@@ -41,7 +43,7 @@ namespace VaultSentry.Client
                 var scanVM = _serviceProvider.GetRequiredService<ScanViewModel>();
 
                 // 4. Configure Real-time VQS DropZone Ingress Watcher safely
-                string vqsDropZone = Path.Combine(workspaceRoot, "quarantine_storage", "VQS_DropZone");
+                string vqsDropZone = Path.Combine(settings.ResolveQuarantinePath(workspaceRoot), "VQS_DropZone");
                 Directory.CreateDirectory(vqsDropZone);
 
                 _ingressWatcher = new DownloadIngressWatcher(vqsDropZone, async (capturedFilePath) =>
@@ -82,7 +84,10 @@ namespace VaultSentry.Client
             }
         }
 
-        private static void ConfigureServices(IServiceCollection services, string workspaceRoot)
+        private static void ConfigureServices(
+            IServiceCollection services,
+            string workspaceRoot,
+            VaultSentrySettings settings)
         {
             string dbDir = Path.Combine(workspaceRoot, "src", "database");
             Directory.CreateDirectory(dbDir);
@@ -90,9 +95,8 @@ namespace VaultSentry.Client
 
             // Infrastructure Services - Register both concrete type and interface mappings to prevent DI resolution failures
             services.AddSingleton<QuarantineRepository>(_ => new QuarantineRepository(dbPath));
-            services.AddSingleton<EngineProcessBridge>(_ => new EngineProcessBridge(workspaceRoot));
+            services.AddSingleton<EngineProcessBridge>(_ => new EngineProcessBridge(workspaceRoot, settings));
             services.AddSingleton<IEngineProcessBridge>(provider => provider.GetRequiredService<EngineProcessBridge>());
-            services.AddSingleton<PipelineService>();
 
             // ViewModels
             services.AddSingleton<FileAnalysisViewModel>();
