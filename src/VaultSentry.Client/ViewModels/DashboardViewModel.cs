@@ -1,45 +1,61 @@
 using System;
 using System.Threading.Tasks;
-using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using VaultSentry.Client.Services;
 
-namespace VaultSentry.Client.ViewModels;
-
-public partial class DashboardViewModel : ViewModelBase
+namespace VaultSentry.Client.ViewModels
 {
-    private readonly QuarantineRepository _repository;
-
-    [ObservableProperty]
-    private int _totalScannedFiles;
-
-    [ObservableProperty]
-    private int _quarantinedThreats;
-
-    [ObservableProperty]
-    private int _cleanFiles;
-
-    [ObservableProperty]
-    private string _systemStatus = "Virtual Quarantine Space Active";
-
-    public DashboardViewModel(QuarantineRepository repository)
+    public class DashboardViewModel : ViewModelBase
     {
-        _repository = repository;
-    }
+        private readonly QuarantineRepository _repository;
+        private int _totalScans;
+        private int _quarantinedThreats;
+        private int _cleanFiles;
 
-    [RelayCommand]
-    public async Task RefreshMetricsAsync()
-    {
-        try
+        public IAsyncRelayCommand LoadMetricsCommand { get; }
+
+        public DashboardViewModel(QuarantineRepository repository)
         {
-            var metrics = await _repository.GetDashboardMetricsAsync();
-            TotalScannedFiles = metrics.TotalScans;
-            QuarantinedThreats = metrics.QuarantinedCount;
-            CleanFiles = metrics.CleanCount;
+            _repository = repository ?? throw new ArgumentNullException(nameof(repository));
+            LoadMetricsCommand = new AsyncRelayCommand(LoadMetricsAsync);
+            
+            // Automatically load on creation
+            _ = LoadMetricsAsync();
         }
-        catch (Exception ex)
+
+        public int TotalScans
         {
-            SystemStatus = $"Database Sync Error: {ex.Message}";
+            get => _totalScans;
+            set => SetProperty(ref _totalScans, value);
         }
+
+        public int QuarantinedThreats
+        {
+            get => _quarantinedThreats;
+            set => SetProperty(ref _quarantinedThreats, value);
+        }
+
+        public int CleanFiles
+        {
+            get => _cleanFiles;
+            set => SetProperty(ref _cleanFiles, value);
+        }
+
+        public async Task LoadMetricsAsync()
+        {
+            try
+            {
+                var metrics = await _repository.GetDashboardMetricsAsync();
+                TotalScans = metrics.TotalScans;
+                QuarantinedThreats = metrics.QuarantinedCount;
+                CleanFiles = metrics.CleanCount;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Failed to load dashboard metrics: {ex.Message}");
+            }
+        }
+
+        public async Task RefreshMetricsAsync() => await LoadMetricsAsync();
     }
 }

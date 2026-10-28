@@ -28,7 +28,6 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
 
-                        <!-- UpdateSourceTrigger=PropertyChanged ensures manual typing updates the ViewModel instantly -->
                         <TextBox Grid.Column="0" 
                                  Text="{Binding TargetFilePath, UpdateSourceTrigger=PropertyChanged}" 
                                  Background="#0F172A" 
@@ -37,7 +36,6 @@
                                  Padding="10,8" 
                                  FontSize="13" />
 
-                        <!-- Fixed Command Name to match ViewModel -->
                         <Button Grid.Column="1" 
                                 Content="Browse..." 
                                 Command="{Binding BrowseCommand}" 
@@ -49,7 +47,6 @@
                                 BorderThickness="0" 
                                 Cursor="Hand" />
 
-                        <!-- Removed broken IsEnabled Visibility converter -->
                         <Button Grid.Column="2" 
                                 Content="Run Scan" 
                                 Command="{Binding RunScanCommand}" 
@@ -66,8 +63,8 @@
 
             <!-- Error Banner -->
             <Border Background="#450A0A" BorderBrush="#EF4444" BorderThickness="1" CornerRadius="6" Padding="15" Margin="0,0,0,20"
-                    Visibility="{Binding ErrorMessage, Converter={StaticResource StringToVisConverter}}">
-                <TextBlock Text="{Binding ErrorMessage}" Foreground="#FCA5A5" TextWrapping="Wrap" FontSize="13" />
+                    Visibility="{Binding AnalysisViewModel.ErrorMessage, Converter={StaticResource StringToVisConverter}}">
+                <TextBlock Text="{Binding AnalysisViewModel.ErrorMessage}" Foreground="#FCA5A5" TextWrapping="Wrap" FontSize="13" />
             </Border>
 
             <!-- Loading Indicator -->
@@ -77,7 +74,7 @@
                            Foreground="#38BDF8" FontWeight="SemiBold" FontSize="14" HorizontalAlignment="Center" />
             </Border>
 
-            <!-- Scan Assessment Report Card (Now correctly bound to AnalysisViewModel) -->
+            <!-- Scan Assessment Report Card -->
             <StackPanel>
                 <Border Background="#141C2E" CornerRadius="8" Padding="25" Margin="0,0,0,20">
                     <Grid>
@@ -124,6 +121,18 @@
                                 <TextBlock Text="{Binding AnalysisViewModel.SecurityRecommendation}" FontSize="13" Foreground="#E2E8F0" TextWrapping="Wrap" />
                             </StackPanel>
                         </Border>
+
+                        <!-- RESTORED: Quarantine Decision Action Controls -->
+                        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right">
+                            <Button Content="Shred &amp; Destroy Payload" 
+                                    Command="{Binding ShredPayloadCommand}"
+                                    Background="#DC2626" 
+                                    Foreground="#FFFFFF" 
+                                    FontWeight="Bold" 
+                                    Padding="15,8" 
+                                    BorderThickness="0" 
+                                    Cursor="Hand" />
+                        </StackPanel>
                     </Grid>
                 </Border>
 

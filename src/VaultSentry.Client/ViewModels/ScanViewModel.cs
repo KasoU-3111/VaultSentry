@@ -15,7 +15,6 @@ namespace VaultSentry.Client.ViewModels
 
         private string _targetFilePath = string.Empty;
         private bool _isScanning;
-        private string _errorMessage = string.Empty;
 
         public FileAnalysisViewModel AnalysisViewModel => _fileAnalysisViewModel;
 
@@ -44,12 +43,6 @@ namespace VaultSentry.Client.ViewModels
             set => SetProperty(ref _isScanning, value);
         }
 
-        public string ErrorMessage
-        {
-            get => _errorMessage;
-            set => SetProperty(ref _errorMessage, value ?? string.Empty);
-        }
-
         private void ExecuteBrowse()
         {
             var dialog = new OpenFileDialog
@@ -71,12 +64,14 @@ namespace VaultSentry.Client.ViewModels
         {
             if (string.IsNullOrWhiteSpace(TargetFilePath))
             {
-                ErrorMessage = "Please enter or select a valid target file path.";
+                _fileAnalysisViewModel.ErrorMessage = "Please enter or select a valid target file path.";
                 return;
             }
 
             IsScanning = true;
-            ErrorMessage = string.Empty;
+            
+            // Clear previous state before new scan
+            _fileAnalysisViewModel.ErrorMessage = string.Empty;
             _fileAnalysisViewModel.TargetFilePath = TargetFilePath;
 
             try
@@ -86,7 +81,8 @@ namespace VaultSentry.Client.ViewModels
             }
             catch (Exception ex)
             {
-                ErrorMessage = $"Scan Execution Error: {ex.Message}";
+                // Push IPC dispatch errors into the unified dashboard state
+                _fileAnalysisViewModel.ErrorMessage = $"IPC Dispatch Error: {ex.Message}";
                 _fileAnalysisViewModel.Verdict = "ERROR";
                 _fileAnalysisViewModel.RiskScore = 0;
             }

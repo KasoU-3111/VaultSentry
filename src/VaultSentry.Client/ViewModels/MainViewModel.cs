@@ -1,48 +1,55 @@
 using System.Threading.Tasks;
-using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using VaultSentry.Client.Services;
 
-namespace VaultSentry.Client.ViewModels;
-
-public partial class MainViewModel : ViewModelBase
+namespace VaultSentry.Client.ViewModels
 {
-    [ObservableProperty]
-    private ViewModelBase _currentViewModel;
-
-    public DashboardViewModel DashboardVM { get; }
-    public ScanViewModel ScanVM { get; }
-    public QuarantineViewModel QuarantineVM { get; }
-
-    public MainViewModel(DashboardViewModel dashboardVM, ScanViewModel scanVM, QuarantineViewModel quarantineVM)
+    public class MainViewModel : ViewModelBase
     {
-        DashboardVM = dashboardVM;
-        ScanVM = scanVM;
-        QuarantineVM = quarantineVM;
-        
-        // Explicitly set default starting view
-        _currentViewModel = dashboardVM;
+        private readonly QuarantineRepository _repository;
+        private ViewModelBase _currentViewModel;
 
-        // Populate initial SQLite ledger counts
-        _ = DashboardVM.RefreshMetricsAsync();
-    }
+        public DashboardViewModel DashboardVM { get; }
+        public ScanViewModel ScanVM { get; }
+        public QuarantineViewModel QuarantineVM { get; }
 
-    [RelayCommand]
-    private async Task NavigateToDashboardAsync()
-    {
-        CurrentViewModel = DashboardVM;
-        await DashboardVM.RefreshMetricsAsync();
-    }
+        public IRelayCommand NavigateToDashboardCommand { get; }
+        public IRelayCommand NavigateToScanCommand { get; }
+        public IRelayCommand NavigateToQuarantineCommand { get; }
 
-    [RelayCommand]
-    private void NavigateToScan()
-    {
-        CurrentViewModel = ScanVM;
-    }
+        public MainViewModel(QuarantineRepository repository, EngineProcessBridge engineBridge)
+        {
+            _repository = repository;
+            
+            DashboardVM = new DashboardViewModel(_repository);
+            ScanVM = new ScanViewModel(engineBridge, _repository);
+            QuarantineVM = new QuarantineViewModel(_repository);
 
-    [RelayCommand]
-    private async Task NavigateToQuarantineAsync()
-    {
-        CurrentViewModel = QuarantineVM;
-        await QuarantineVM.LoadQuarantineDataAsync();
+            // Default startup view
+            _currentViewModel = DashboardVM;
+
+            NavigateToDashboardCommand = new AsyncRelayCommand(async () => 
+            {
+                CurrentViewModel = DashboardVM;
+                await DashboardVM.RefreshMetricsAsync();
+            });
+
+            NavigateToScanCommand = new RelayCommand(() => 
+            {
+                CurrentViewModel = ScanVM;
+            });
+
+            NavigateToQuarantineCommand = new AsyncRelayCommand(async () => 
+            {
+                CurrentViewModel = QuarantineVM;
+                await QuarantineVM.LoadQuarantineDataAsync(); // CRITICAL FIX: Loads SQLite ledger on tab click
+            });
+        }
+
+        public ViewModelBase CurrentViewModel
+        {
+            get => _currentViewModel;
+            set => SetProperty(ref _currentViewModel, value);
+        }
     }
 }

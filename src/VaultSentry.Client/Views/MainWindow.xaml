@@ -12,7 +12,7 @@
         Background="#0B1120">
 
     <Window.Resources>
-        <!-- Polymorphic View Resolution for ViewModels -->
+        <!-- Polymorphic View Resolution for ViewModels using the correct 'views:' prefix -->
         <DataTemplate DataType="{x:Type vm:DashboardViewModel}">
             <views:DashboardView />
         </DataTemplate>

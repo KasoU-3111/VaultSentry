@@ -2,124 +2,118 @@ using System;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Threading.Tasks;
-using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Microsoft.Win32;
-using VaultSentry.Client.Models;
 using VaultSentry.Client.Services;
 
-namespace VaultSentry.Client.ViewModels;
-
-public partial class QuarantineViewModel : ViewModelBase
+namespace VaultSentry.Client.ViewModels
 {
-    private readonly QuarantineRepository _repository;
-
-    [ObservableProperty]
-    private ObservableCollection<QuarantineItem> _quarantinedItems = new();
-
-    [ObservableProperty]
-    private QuarantineItem? _selectedItem;
-
-    [ObservableProperty]
-    private string? _statusMessage;
-
-    [ObservableProperty]
-    private bool _isLoading;
-
-    public QuarantineViewModel(QuarantineRepository repository)
+    /// <summary>
+    /// State manager for the Quarantine Vault. 
+    /// Handles the lifecycle of isolated files (Review, Release, Cryptographic Shred).
+    /// </summary>
+    public class QuarantineViewModel : ViewModelBase
     {
-        _repository = repository;
-        // Eagerly populate quarantine audit ledger from SQLite on creation
-        _ = LoadQuarantineDataAsync();
-    }
+        private readonly QuarantineRepository _repository;
+        private bool _isLoading;
 
-    [RelayCommand]
-    public async Task LoadQuarantineDataAsync()
-    {
-        IsLoading = true;
-        try
-        {
-            var items = await _repository.GetQuarantinedItemsAsync();
-            QuarantinedItems.Clear();
-            foreach (var item in items)
-            {
-                QuarantinedItems.Add(item);
-            }
-            if (QuarantinedItems.Count == 0)
-            {
-                StatusMessage = "No quarantined files currently in the isolation vault.";
-            }
-            else
-            {
-                StatusMessage = $"Loaded {QuarantinedItems.Count} quarantine record(s).";
-            }
-        }
-        catch (Exception ex)
-        {
-            StatusMessage = $"Ledger Read Error: {ex.Message}";
-        }
-        finally
-        {
-            IsLoading = false;
-        }
-    }
+        public ObservableCollection<QuarantineItem> QuarantinedItems { get; } = new();
 
-    [RelayCommand]
-    private async Task ShredSelectedPayloadAsync()
-    {
-        if (SelectedItem == null)
+        public IAsyncRelayCommand LoadItemsCommand { get; }
+        public IAsyncRelayCommand<QuarantineItem> ReleaseFileCommand { get; }
+        public IAsyncRelayCommand<QuarantineItem> ShredFileCommand { get; }
+
+        public QuarantineViewModel(QuarantineRepository repository)
         {
-            StatusMessage = "Please select a quarantined item from the list to shred.";
-            return;
+            _repository = repository ?? throw new ArgumentNullException(nameof(repository));
+
+            LoadItemsCommand = new AsyncRelayCommand(LoadItemsAsync);
+            ReleaseFileCommand = new AsyncRelayCommand<QuarantineItem>(ReleaseFileAsync);
+            ShredFileCommand = new AsyncRelayCommand<QuarantineItem>(ShredFileAsync);
         }
 
-        try
+        public bool IsLoading
         {
-            await QuarantineRepository.ShredFileAsync(SelectedItem.StagedPath);
-            await _repository.UpdateQuarantineStatusAsync(SelectedItem.QuarantineId, "SHREDDED");
-            StatusMessage = $"Payload '{Path.GetFileName(SelectedItem.OriginalPath)}' securely destroyed via 3-Pass DoD wipe.";
-            await LoadQuarantineDataAsync();
-        }
-        catch (Exception ex)
-        {
-            StatusMessage = $"Disposal Error: {ex.Message}";
-        }
-    }
-
-    [RelayCommand]
-    private async Task ReleaseSelectedFileAsync()
-    {
-        if (SelectedItem == null)
-        {
-            StatusMessage = "Please select an item from the list to release.";
-            return;
+            get => _isLoading;
+            set => SetProperty(ref _isLoading, value);
         }
 
-        if (!File.Exists(SelectedItem.StagedPath))
+        public async Task LoadItemsAsync()
         {
-            StatusMessage = "Cannot release: Staged payload does not exist or was already shredded.";
-            return;
-        }
-
-        var saveDialog = new SaveFileDialog
-        {
-            Title = "Select Destination for Released File",
-            FileName = Path.GetFileName(SelectedItem.OriginalPath)
-        };
-
-        if (saveDialog.ShowDialog() == true)
-        {
+            IsLoading = true;
             try
             {
-                File.SetAttributes(SelectedItem.StagedPath, FileAttributes.Normal);
-                File.Copy(SelectedItem.StagedPath, saveDialog.FileName, overwrite: true);
-                await _repository.UpdateQuarantineStatusAsync(SelectedItem.QuarantineId, "RELEASED");
-                StatusMessage = $"File successfully released to: {saveDialog.FileName}";
-                await LoadQuarantineDataAsync();
+                QuarantinedItems.Clear();
+                var items = await _repository.GetQuarantinedItemsAsync();
+                
+                foreach (var item in items)
+                {
+                    QuarantinedItems.Add(item);
+                }
             }
             catch (Exception ex)
             {
-                StatusMessage = $"Release Error: {ex.Message}";
+                System.Diagnostics.Debug.WriteLine($"Failed to load quarantine ledger: {ex.Message}");
+            }
+            finally
+            {
+                IsLoading = false;
+            }
+        }
+
+        /// <summary>
+        /// Adapter alias method to satisfy MainViewModel navigation hooks (Resolves CS1061).
+        /// </summary>
+        public async Task LoadQuarantineDataAsync()
+        {
+            await LoadItemsAsync();
+        }
+
+        private async Task ReleaseFileAsync(QuarantineItem? item)
+        {
+            if (item == null || (item.Status != "QUARANTINED" && item.Status != "STAGED")) return;
+
+            try
+            {
+                if (File.Exists(item.StagedPath))
+                {
+                    string userDownloads = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
+                    string safeFileName = Path.GetFileName(item.OriginalPath);
+                    string destinationPath = Path.Combine(userDownloads, safeFileName);
+
+                    int counter = 1;
+                    while (File.Exists(destinationPath))
+                    {
+                        string name = Path.GetFileNameWithoutExtension(safeFileName);
+                        string ext = Path.GetExtension(safeFileName);
+                        destinationPath = Path.Combine(userDownloads, $"{name} ({counter}){ext}");
+                        counter++;
+                    }
+
+                    File.Move(item.StagedPath, destinationPath);
+                }
+
+                await _repository.UpdateQuarantineStatusAsync(item.QuarantineId, "RELEASED");
+                await LoadItemsAsync();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Failed to release file {item.QuarantineId}: {ex.Message}");
+            }
+        }
+
+        private async Task ShredFileAsync(QuarantineItem? item)
+        {
+            if (item == null || item.Status == "SHREDDED") return;
+
+            try
+            {
+                await QuarantineRepository.ShredFileAsync(item.StagedPath);
+                await _repository.UpdateQuarantineStatusAsync(item.QuarantineId, "SHREDDED");
+                await LoadItemsAsync();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Failed to shred file {item.QuarantineId}: {ex.Message}");
             }
         }
     }
