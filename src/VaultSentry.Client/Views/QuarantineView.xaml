@@ -5,8 +5,9 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
              mc:Ignorable="d" 
              d:DesignHeight="750" d:DesignWidth="900">
-    <Grid Margin="30">
+    <Grid Margin="34,30,34,32">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
@@ -18,21 +19,43 @@
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
 
-            <TextBlock Grid.Column="0" Text="Quarantine Vault Ledger" FontSize="26" FontWeight="Bold" Foreground="#FFFFFF" VerticalAlignment="Center" />
+            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                <TextBlock Text="Quarantine vault" Style="{StaticResource PageTitleStyle}" />
+                <TextBlock Text="Review static analysis results and manage files staged in quarantine storage."
+                           Style="{StaticResource PageSubtitleStyle}" Margin="0,5,0,0" />
+            </StackPanel>
             <Button Grid.Column="1" 
                     Content="Refresh Vault" 
                     Command="{Binding LoadItemsCommand}" 
-                    Background="#334155" 
-                    Foreground="#FFFFFF" 
-                    FontWeight="SemiBold" 
-                    Padding="15,8" 
-                    BorderThickness="0" 
-                    Cursor="Hand" />
+                    Style="{StaticResource SecondaryButtonStyle}" />
         </Grid>
 
+        <StackPanel Grid.Row="1" Margin="0,0,0,15">
+            <TextBlock Text="Releasing a suspicious or malicious file requires explicit confirmation. Review the verdict before release."
+                       Foreground="{StaticResource TextSecondaryBrush}"
+                       Padding="4,4,4,10"
+                       FontSize="12" />
+            <TextBlock Text="{Binding ErrorMessage}"
+                       Visibility="{Binding ErrorMessage, Converter={StaticResource StringToVisConverter}}"
+                       Background="#27151D"
+                       Foreground="#FDA4AF"
+                       Padding="12"
+                       TextWrapping="Wrap" />
+            <TextBlock Text="No scans have been saved to the vault yet. Scan a file to add an entry."
+                       Visibility="{Binding HasItems, Converter={StaticResource BoolToInverseVisConverter}}"
+                       Foreground="{StaticResource TextSecondaryBrush}"
+                       Padding="12,10"
+                       Background="{StaticResource SurfaceBrush}" />
+            <TextBlock Text="Loading quarantine records..."
+                       Visibility="{Binding IsLoading, Converter={StaticResource BoolToVisConverter}}"
+                       Foreground="#7DD3FC"
+                       Padding="12,10" />
+        </StackPanel>
+
         <!-- Ledger DataGrid -->
-        <Border Grid.Row="1" Background="#141C2E" CornerRadius="8" Padding="15">
+        <Border Grid.Row="2" Style="{StaticResource CardStyle}" Padding="10">
             <DataGrid ItemsSource="{Binding QuarantinedItems}" 
+                      Style="{StaticResource DataGridStyle}"
                       AutoGenerateColumns="False" 
                       IsReadOnly="True" 
                       Background="Transparent" 
@@ -56,6 +79,7 @@
                     <DataGridTextColumn Header="Quarantine ID" Binding="{Binding QuarantineId}" Width="160" FontFamily="Consolas" FontSize="11" />
                     <DataGridTextColumn Header="Original Path" Binding="{Binding OriginalPath}" Width="*" />
                     <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="110" FontWeight="Bold" />
+                    <DataGridTextColumn Header="Verdict" Binding="{Binding Verdict}" Width="110" FontWeight="Bold" />
                     <DataGridTextColumn Header="Timestamp" Binding="{Binding CreatedAt}" Width="140" />
                     
                     <!-- Action Buttons Column -->
@@ -63,17 +87,17 @@
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                                    <Button Content="Release" 
+                                    <Button Content="Authorize &amp; Release"
                                             Command="{Binding DataContext.ReleaseFileCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}" 
                                             CommandParameter="{Binding}"
-                                            Background="#0284C7" Foreground="White" FontWeight="SemiBold" 
-                                            Padding="10,4" Margin="0,0,8,0" BorderThickness="0" Cursor="Hand" />
+                                            Style="{StaticResource PrimaryButtonStyle}"
+                                            Padding="9,5" Margin="0,0,8,0" />
                                     
-                                    <Button Content="Shred" 
+                                    <Button Content="Delete"
                                             Command="{Binding DataContext.ShredFileCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}" 
                                             CommandParameter="{Binding}"
-                                            Background="#DC2626" Foreground="White" FontWeight="SemiBold" 
-                                            Padding="10,4" BorderThickness="0" Cursor="Hand" />
+                                            Style="{StaticResource DangerButtonStyle}"
+                                            Padding="9,5" />
                                 </StackPanel>
                             </DataTemplate>
                         </DataGridTemplateColumn.CellTemplate>

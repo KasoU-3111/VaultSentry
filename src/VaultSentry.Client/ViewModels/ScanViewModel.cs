@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -20,6 +21,7 @@ namespace VaultSentry.Client.ViewModels
 
         private string _targetFilePath = string.Empty;
         private bool _isScanning;
+        private bool _scanPersisted;
 
         public FileAnalysisViewModel AnalysisViewModel => _fileAnalysisViewModel;
 
@@ -67,21 +69,48 @@ namespace VaultSentry.Client.ViewModels
 
         public async Task ExecuteScanAsync()
         {
-            if (string.IsNullOrWhiteSpace(TargetFilePath))
+            await ExecuteScanAsync(TargetFilePath);
+        }
+
+        public async Task ScanIngressFileAsync(string filePath)
+        {
+            TargetFilePath = filePath;
+            await ExecuteScanAsync(filePath);
+
+            if (!_scanPersisted)
+            {
+                return;
+            }
+
+            try
+            {
+                File.Delete(filePath);
+            }
+            catch (Exception ex)
+            {
+                _fileAnalysisViewModel.ErrorMessage =
+                    $"The scan was saved to the vault, but the incoming drop-zone copy could not be removed: {ex.Message}";
+            }
+        }
+
+        private async Task ExecuteScanAsync(string filePath)
+        {
+            if (string.IsNullOrWhiteSpace(filePath))
             {
                 _fileAnalysisViewModel.ErrorMessage = "Please enter or select a valid target file path.";
                 return;
             }
 
+            _scanPersisted = false;
             IsScanning = true;
             
             // Clear previous state before new scan
             _fileAnalysisViewModel.ErrorMessage = string.Empty;
-            _fileAnalysisViewModel.TargetFilePath = TargetFilePath;
+            _fileAnalysisViewModel.TargetFilePath = filePath;
 
             try
             {
-                string jsonResult = await _engineBridge.RunScanAsync(TargetFilePath);
+                string jsonResult = await _engineBridge.RunScanAsync(filePath);
                 _fileAnalysisViewModel.PopulateFromScanResultJson(jsonResult);
 
                 if (!string.IsNullOrEmpty(_fileAnalysisViewModel.ErrorMessage))
@@ -124,7 +153,8 @@ namespace VaultSentry.Client.ViewModels
 
                 try
                 {
-                    await _repository.RecordScanAsync(report, TargetFilePath, findings);
+                    await _repository.RecordScanAsync(report, filePath, findings);
+                    _scanPersisted = true;
                 }
                 catch (Exception ex)
                 {

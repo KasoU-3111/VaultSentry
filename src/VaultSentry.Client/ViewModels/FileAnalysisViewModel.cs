@@ -1,6 +1,7 @@
 using System;
 using System.Collections.ObjectModel;
 using System.Text.Json;
+using VaultSentry.Client.Services;
 using VaultSentry.Client.Utils;
 using VaultSentry.Core.Models; // Resolves CS0246 for SecurityFindingModel
 
@@ -22,8 +23,15 @@ namespace VaultSentry.Client.ViewModels
         private string _verdict = "SAFE";
         private int _riskScore = 0;
         private string _securityRecommendation = "No scan performed.";
+        private PlainLanguageAssessment? _humanAssessment;
 
         public ObservableCollection<SecurityFindingModel> Findings { get; } = new ObservableCollection<SecurityFindingModel>();
+
+        public PlainLanguageAssessment? HumanAssessment
+        {
+            get => _humanAssessment;
+            private set => SetProperty(ref _humanAssessment, value);
+        }
 
         public string TargetFilePath
         {
@@ -95,6 +103,7 @@ namespace VaultSentry.Client.ViewModels
             {
                 ErrorMessage = string.Empty;
                 Findings.Clear();
+                HumanAssessment = null;
 
                 if (string.IsNullOrWhiteSpace(jsonResponse))
                 {
@@ -206,6 +215,13 @@ namespace VaultSentry.Client.ViewModels
                         });
                     }
                 }
+
+                HumanAssessment = PlainLanguageAssessmentService.Create(
+                    Verdict,
+                    RiskScore,
+                    IdentifiedType,
+                    Findings,
+                    SecurityRecommendation);
             }
             catch (Exception ex)
             {

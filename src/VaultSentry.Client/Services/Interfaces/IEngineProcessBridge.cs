@@ -4,7 +4,7 @@ namespace VaultSentry.Core.Interfaces
 {
     /// <summary>
     /// Core contract for the C# to Python Subprocess Inter-Process Communication (IPC) Bridge.
-    /// Abstracts static security analysis execution across VQS isolation boundaries.
+    /// Abstracts local static security analysis execution through the VaultSentry engine.
     /// </summary>
     public interface IEngineProcessBridge
     {

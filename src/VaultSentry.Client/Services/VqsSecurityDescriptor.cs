@@ -6,11 +6,11 @@ using System.Security.Principal;
 namespace VaultSentry.Client.Services;
 
 /// <summary>
-/// Hardens the physical VQS DropZone directory with explicit execution denial ACLs.
+/// Applies a Windows execute-deny ACL to a directory; this is not a sandbox or VM boundary.
 /// </summary>
 public static class VqsSecurityDescriptor
 {
-    public static void InitializeAndHardenDirectory(string directoryPath)
+    public static bool InitializeAndHardenDirectory(string directoryPath)
     {
         var dirInfo = new DirectoryInfo(directoryPath);
         if (!dirInfo.Exists)
@@ -27,10 +27,10 @@ public static class VqsSecurityDescriptor
 
             var everyoneSid = new SecurityIdentifier(WellKnownSidType.WorldSid, null);
 
-            // Explicitly DENY File Execution and Traverse rights to Everyone
+            // Deny launching files without blocking directory traversal needed by browsers.
             var denyExecuteRule = new FileSystemAccessRule(
                 everyoneSid,
-                FileSystemRights.ExecuteFile | FileSystemRights.Traverse,
+                FileSystemRights.ExecuteFile,
                 InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit,
                 PropagationFlags.None,
                 AccessControlType.Deny
@@ -50,11 +50,12 @@ public static class VqsSecurityDescriptor
             security.AddAccessRule(allowStagingRule);
 
             dirInfo.SetAccessControl(security);
+            return true;
         }
         catch (Exception ex)
         {
-            // Fallback for non-elevated developer execution
             System.Diagnostics.Debug.WriteLine($"[VQS ACL Warning] Could not apply strict execute-deny DACL: {ex.Message}");
+            return false;
         }
     }
 }

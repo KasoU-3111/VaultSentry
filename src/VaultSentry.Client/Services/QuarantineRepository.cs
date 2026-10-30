@@ -11,7 +11,14 @@ namespace VaultSentry.Client.Services
 {
     public record DashboardMetrics(int TotalScans, int QuarantinedCount, int CleanCount);
 
-    public record QuarantineItem(string QuarantineId, string OriginalPath, string StagedPath, string Status, string Sha256, string CreatedAt);
+    public record QuarantineItem(
+        string QuarantineId,
+        string OriginalPath,
+        string StagedPath,
+        string Status,
+        string Sha256,
+        string Verdict,
+        string CreatedAt);
 
     /// <summary>
     /// Data Access Layer for VaultSentry SQLite persistence.
@@ -112,6 +119,21 @@ namespace VaultSentry.Client.Services
             indexCommand.CommandText = @"
                 CREATE UNIQUE INDEX IF NOT EXISTS idx_scan_history_quarantine_id
                 ON scan_history (quarantine_id);
+
+                UPDATE scan_history
+                SET quarantine_id = (
+                    SELECT quarantine_ledger.quarantine_id
+                    FROM quarantine_ledger
+                    WHERE quarantine_ledger.sha256 = scan_history.sha256
+                      AND quarantine_ledger.created_at = scan_history.scan_timestamp
+                      AND NOT EXISTS (
+                          SELECT 1
+                          FROM scan_history AS assigned
+                          WHERE assigned.quarantine_id = quarantine_ledger.quarantine_id
+                      )
+                    LIMIT 1
+                )
+                WHERE quarantine_id IS NULL;
             ";
             indexCommand.ExecuteNonQuery();
         }
@@ -136,7 +158,7 @@ namespace VaultSentry.Client.Services
                     cmd.Parameters.AddWithValue("$qid", report.QuarantineId);
                     cmd.Parameters.AddWithValue("$orig", originalPath);
                     cmd.Parameters.AddWithValue("$staged", report.StagedPath);
-                    cmd.Parameters.AddWithValue("$status", report.Verdict == "MALICIOUS" ? "QUARANTINED" : "STAGED");
+                    cmd.Parameters.AddWithValue("$status", report.Verdict == "SAFE" ? "STAGED" : "QUARANTINED");
                     cmd.Parameters.AddWithValue("$sha256", report.Hashes.Sha256);
                     await cmd.ExecuteNonQueryAsync();
                 }
@@ -229,9 +251,11 @@ namespace VaultSentry.Client.Services
 
             using var cmd = connection.CreateCommand();
             cmd.CommandText = @"
-                SELECT quarantine_id, original_path, staged_path, status, sha256, created_at
-                FROM quarantine_ledger
-                ORDER BY created_at DESC;
+                SELECT q.quarantine_id, q.original_path, q.staged_path, q.status, q.sha256,
+                       COALESCE(h.verdict, 'UNVERIFIED'), q.created_at
+                FROM quarantine_ledger AS q
+                LEFT JOIN scan_history AS h ON h.quarantine_id = q.quarantine_id
+                ORDER BY q.created_at DESC;
             ";
 
             using var reader = await cmd.ExecuteReaderAsync();
@@ -243,7 +267,8 @@ namespace VaultSentry.Client.Services
                     reader.GetString(2),
                     reader.GetString(3),
                     reader.GetString(4),
-                    reader.GetString(5)
+                    reader.GetString(5),
+                    reader.GetString(6)
                 ));
             }
 
@@ -263,7 +288,12 @@ namespace VaultSentry.Client.Services
             ";
             cmd.Parameters.AddWithValue("$status", newStatus);
             cmd.Parameters.AddWithValue("$qid", quarantineId);
-            await cmd.ExecuteNonQueryAsync();
+            int updatedRows = await cmd.ExecuteNonQueryAsync();
+            if (updatedRows != 1)
+            {
+                throw new InvalidOperationException(
+                    $"Could not update quarantine status: record '{quarantineId}' was not found.");
+            }
         }
 
         public static async Task ShredFileAsync(string filePath)

@@ -3,13 +3,12 @@ using System;
 namespace VaultSentry.Client.Services.Interfaces
 {
     /// <summary>
-    /// Real-time ingress monitoring contract for Virtual Quarantine Space (VQS) DropZone.
-    /// Encapsulates FileSystemWatcher event handling to ensure safe file staging.
+    /// Contract for best-effort monitoring of a configured folder after files are written.
     /// </summary>
     public interface IDownloadIngressWatcher : IDisposable
     {
         /// <summary>
-        /// Begins monitoring the designated VQS DropZone directory for incoming files.
+        /// Begins monitoring the designated folder for files to scan after they are written.
         /// </summary>
         void Start();
 

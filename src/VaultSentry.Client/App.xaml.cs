@@ -13,7 +13,7 @@ namespace VaultSentry.Client
 {
     /// <summary>
     /// Application Composition Root and Lifecycle Coordinator.
-    /// Configures Dependency Injection, Infrastructure Services, and Real-time VQS Ingress Monitoring safely.
+    /// Configures dependency injection, infrastructure services, and optional post-download folder monitoring.
     /// </summary>
     public partial class App : Application
     {
@@ -41,10 +41,19 @@ namespace VaultSentry.Client
                 // 3. Resolve ViewModels from Service Provider
                 var mainVM = _serviceProvider.GetRequiredService<MainViewModel>();
                 var scanVM = _serviceProvider.GetRequiredService<ScanViewModel>();
+                var ingressOptions = _serviceProvider.GetRequiredService<DownloadIngressOptions>();
 
-                // 4. Configure Real-time VQS DropZone Ingress Watcher safely
-                string vqsDropZone = Path.Combine(settings.ResolveQuarantinePath(workspaceRoot), "VQS_DropZone");
+                // 4. Configure optional post-download monitoring for the VQS drop zone
+                string vqsDropZone = ingressOptions.DropZonePath;
                 Directory.CreateDirectory(vqsDropZone);
+                if (!VqsSecurityDescriptor.InitializeAndHardenDirectory(vqsDropZone))
+                {
+                    MessageBox.Show(
+                        "Windows could not apply the drop-zone execution restriction. Downloads can still be scanned, but files in this folder are not protected from being launched before scanning completes.",
+                        "VaultSentry - Drop Zone Warning",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Warning);
+                }
 
                 _ingressWatcher = new DownloadIngressWatcher(vqsDropZone, async (capturedFilePath) =>
                 {
@@ -54,16 +63,22 @@ namespace VaultSentry.Client
                         {
                             // Navigate UI to File Analysis workspace
                             mainVM.CurrentViewModel = scanVM;
-                            scanVM.TargetFilePath = capturedFilePath;
 
-                            // Execute scan workflow directly and asynchronously
-                            await scanVM.ExecuteScanAsync();
+                            await scanVM.ScanIngressFileAsync(capturedFilePath);
                         }
                         catch (Exception ex)
                         {
                             MessageBox.Show($"Error processing ingested file: {ex.Message}", "VaultSentry Ingress Error", MessageBoxButton.OK, MessageBoxImage.Warning);
                         }
-                    });
+                    }).Task.Unwrap();
+                }, (failedPath, exception) =>
+                {
+                    Dispatcher.BeginInvoke(new Action(() =>
+                        MessageBox.Show(
+                            $"VaultSentry could not process the incoming file '{Path.GetFileName(failedPath)}': {exception.Message}",
+                            "VaultSentry Ingress Error",
+                            MessageBoxButton.OK,
+                            MessageBoxImage.Warning)));
                 });
 
                 _ingressWatcher.Start();
@@ -92,17 +107,23 @@ namespace VaultSentry.Client
             string dbDir = Path.Combine(workspaceRoot, "src", "database");
             Directory.CreateDirectory(dbDir);
             string dbPath = Path.Combine(dbDir, "vaultsentry.db");
+            string quarantineStoragePath = settings.ResolveQuarantinePath(workspaceRoot);
+            string dropZonePath = Path.Combine(quarantineStoragePath, "VQS_DropZone");
 
             // Infrastructure Services - Register both concrete type and interface mappings to prevent DI resolution failures
             services.AddSingleton<QuarantineRepository>(_ => new QuarantineRepository(dbPath));
+            services.AddSingleton<QuarantineReleaseService>();
+            services.AddSingleton<QuarantineDownloadService>();
             services.AddSingleton<EngineProcessBridge>(_ => new EngineProcessBridge(workspaceRoot, settings));
             services.AddSingleton<IEngineProcessBridge>(provider => provider.GetRequiredService<EngineProcessBridge>());
+            services.AddSingleton(new DownloadIngressOptions(dropZonePath, quarantineStoragePath, workspaceRoot));
 
             // ViewModels
             services.AddSingleton<FileAnalysisViewModel>();
             services.AddSingleton<DashboardViewModel>();
             services.AddSingleton<ScanViewModel>();
             services.AddSingleton<QuarantineViewModel>();
+            services.AddSingleton<DownloadSimulationViewModel>();
             services.AddSingleton<MainViewModel>();
         }
 

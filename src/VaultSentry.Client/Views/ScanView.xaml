@@ -6,21 +6,21 @@
              mc:Ignorable="d" 
              d:DesignHeight="750" d:DesignWidth="900">
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-        <StackPanel Margin="30">
-            <!-- Header Title -->
-            <TextBlock Text="Static Security Scanner" 
-                       FontSize="26" 
-                       FontWeight="Bold" 
-                       Foreground="#FFFFFF" 
-                       Margin="0,0,0,25" />
+        <StackPanel Margin="34,30,34,36">
+            <StackPanel Margin="0,0,0,22">
+                <TextBlock Text="File analysis" Style="{StaticResource PageTitleStyle}" />
+                <TextBlock Text="Inspect file identity and format-specific risk signals with VaultSentry's local static analysis pipeline."
+                           Style="{StaticResource PageSubtitleStyle}" Margin="0,6,0,0" />
+            </StackPanel>
 
             <!-- Input & Execution Card -->
-            <Border Background="#141C2E" CornerRadius="8" Padding="20" Margin="0,0,0,20">
+            <Border Style="{StaticResource CardStyle}" Margin="0,0,0,18">
                 <StackPanel>
-                    <TextBlock Text="Target File Path:" 
-                               Foreground="#94A3B8" 
-                               FontSize="13" 
-                               Margin="0,0,0,8" />
+                    <TextBlock Text="SELECT A FILE" FontSize="10" FontWeight="Bold"
+                               Foreground="{StaticResource TextMutedBrush}" Margin="0,0,0,9" />
+                    <TextBlock Text="Applicable checks may include file identity and hashes, PE, document and macro, installer, archive, disk-image, shortcut and script analysis, YARA signatures, available ClamAV signatures, and heuristic rules. Checks depend on file type and configured or available components."
+                               FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"
+                               TextWrapping="Wrap" Margin="0,0,0,12" />
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
@@ -28,57 +28,46 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
 
-                        <TextBox Grid.Column="0" 
-                                 Text="{Binding TargetFilePath, UpdateSourceTrigger=PropertyChanged}" 
-                                 Background="#0F172A" 
-                                 Foreground="#FFFFFF" 
-                                 BorderBrush="#334155" 
-                                 Padding="10,8" 
-                                 FontSize="13" />
+                        <TextBox Grid.Column="0"
+                                 Text="{Binding TargetFilePath, UpdateSourceTrigger=PropertyChanged}"
+                                 AutomationProperties.Name="Target file path"
+                                 Style="{StaticResource InputTextBoxStyle}" />
 
                         <Button Grid.Column="1" 
                                 Content="Browse..." 
                                 Command="{Binding BrowseCommand}" 
-                                Background="#334155" 
-                                Foreground="#FFFFFF" 
-                                FontWeight="SemiBold" 
-                                Padding="15,8" 
-                                Margin="10,0,0,0" 
-                                BorderThickness="0" 
-                                Cursor="Hand" />
+                                Style="{StaticResource SecondaryButtonStyle}"
+                                Margin="10,0,0,0" />
 
                         <Button Grid.Column="2" 
                                 Content="Run Scan" 
                                 Command="{Binding RunScanCommand}" 
-                                Background="#0284C7" 
-                                Foreground="#FFFFFF" 
-                                FontWeight="Bold" 
-                                Padding="20,8" 
-                                Margin="10,0,0,0" 
-                                BorderThickness="0" 
-                                Cursor="Hand" />
+                                AutomationProperties.Name="Run Scan"
+                                Style="{StaticResource PrimaryButtonStyle}"
+                                Margin="10,0,0,0" />
                     </Grid>
                 </StackPanel>
             </Border>
 
             <!-- Error Banner -->
-            <Border Background="#450A0A" BorderBrush="#EF4444" BorderThickness="1" CornerRadius="6" Padding="15" Margin="0,0,0,20"
+            <Border Background="#27151D" BorderBrush="#7F3342" BorderThickness="1" CornerRadius="8" Padding="15" Margin="0,0,0,18"
                     Visibility="{Binding AnalysisViewModel.ErrorMessage, Converter={StaticResource StringToVisConverter}}">
                 <TextBlock Text="{Binding AnalysisViewModel.ErrorMessage}" Foreground="#FCA5A5" TextWrapping="Wrap" FontSize="13" />
             </Border>
 
             <!-- Loading Indicator -->
-            <Border Background="#141C2E" CornerRadius="8" Padding="20" Margin="0,0,0,20"
+            <Border Style="{StaticResource CardStyle}" Margin="0,0,0,18"
                     Visibility="{Binding IsScanning, Converter={StaticResource BoolToVisConverter}}">
-                <TextBlock Text="[+] Executing Isolated Static Analysis in VQS Container..." 
+                <TextBlock Text="[+] Running VaultSentry local static analysis..."
                            Foreground="#38BDF8" FontWeight="SemiBold" FontSize="14" HorizontalAlignment="Center" />
             </Border>
 
             <!-- Scan Assessment Report Card -->
             <StackPanel>
-                <Border Background="#141C2E" CornerRadius="8" Padding="25" Margin="0,0,0,20">
+                <Border Style="{StaticResource CardStyle}" Padding="22" Margin="0,0,0,18">
                     <Grid>
                         <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
@@ -92,7 +81,7 @@
                             </Grid.ColumnDefinitions>
 
                             <StackPanel Grid.Column="0">
-                                <TextBlock Text="{Binding TargetFilePath}" FontSize="16" FontWeight="Bold" Foreground="#FFFFFF" TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="{Binding TargetFilePath}"                                 FontSize="15" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" TextTrimming="CharacterEllipsis" />
                                 <TextBlock Text="{Binding AnalysisViewModel.IdentifiedType, StringFormat='Identified Type: {0}'}" 
                                            FontSize="13" Foreground="#94A3B8" Margin="0,4,0,0" />
                                 <TextBlock Text="{Binding AnalysisViewModel.Sha256Hash, StringFormat='SHA256: {0}'}" 
@@ -115,31 +104,60 @@
                         </Grid>
 
                         <!-- Recommendation Block -->
-                        <Border Grid.Row="1" Background="#0F172A" CornerRadius="6" Padding="15" Margin="0,0,0,15">
+                        <Border Grid.Row="1" Background="{StaticResource SurfaceInsetBrush}" CornerRadius="7" Padding="15" Margin="0,0,0,15">
                             <StackPanel>
-                                <TextBlock Text="SECURITY RECOMMENDATION" FontSize="11" FontWeight="Bold" Foreground="#38BDF8" Margin="0,0,0,4" />
+                                <TextBlock Text="SECURITY RECOMMENDATION" FontSize="10" FontWeight="Bold" Foreground="#7DD3FC" Margin="0,0,0,5" />
                                 <TextBlock Text="{Binding AnalysisViewModel.SecurityRecommendation}" FontSize="13" Foreground="#E2E8F0" TextWrapping="Wrap" />
                             </StackPanel>
                         </Border>
 
-                        <!-- RESTORED: Quarantine Decision Action Controls -->
-                        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right">
-                            <Button Content="Shred &amp; Destroy Payload" 
+                        <Border Grid.Row="2" Background="#10201F" BorderBrush="#1D4843"
+                                BorderThickness="1" CornerRadius="7" Padding="15" Margin="0,0,0,15">
+                            <StackPanel>
+                                <TextBlock Text="EXECUTIVE SUMMARY" FontSize="10" FontWeight="Bold"
+                                           Foreground="#99F6E4" Margin="0,0,0,6" />
+                                <TextBlock Text="{Binding AnalysisViewModel.HumanAssessment.Summary, Mode=OneWay}"
+                                           FontSize="13" Foreground="{StaticResource TextPrimaryBrush}"
+                                           TextWrapping="Wrap" />
+                                <ItemsControl ItemsSource="{Binding AnalysisViewModel.HumanAssessment.Evidence}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Margin="0,7,0,0">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="16" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="•" Foreground="{StaticResource AccentBrush}" FontSize="12" />
+                                                <TextBlock Grid.Column="1" Text="{Binding}"
+                                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                                           FontSize="12" TextWrapping="Wrap" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <TextBlock Text="{Binding AnalysisViewModel.HumanAssessment.Recommendation, Mode=OneWay}"
+                                           FontSize="12" FontWeight="SemiBold" Foreground="#D1FAE5"
+                                           TextWrapping="Wrap" Margin="0,10,0,0" />
+                                <TextBlock Text="{Binding AnalysisViewModel.HumanAssessment.Limitation, Mode=OneWay}"
+                                           FontSize="10" Foreground="{StaticResource TextMutedBrush}"
+                                           TextWrapping="Wrap" Margin="0,9,0,0" />
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Quarantine Decision Action Controls -->
+                        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right">
+                            <Button Content="Delete quarantined file"
                                     Command="{Binding ShredPayloadCommand}"
-                                    Background="#DC2626" 
-                                    Foreground="#FFFFFF" 
-                                    FontWeight="Bold" 
-                                    Padding="15,8" 
-                                    BorderThickness="0" 
-                                    Cursor="Hand" />
+                                    Style="{StaticResource DangerButtonStyle}" />
                         </StackPanel>
                     </Grid>
                 </Border>
 
                 <!-- Granular Explainability Findings Table -->
-                <TextBlock Text="Explainable Security Findings" FontSize="18" FontWeight="Bold" Foreground="#FFFFFF" Margin="0,10,0,12" />
-                <Border Background="#141C2E" CornerRadius="8" Padding="15">
+                <TextBlock Text="Explainable security findings" Style="{StaticResource SectionHeadingStyle}" Margin="0,8,0,12" />
+                <Border Style="{StaticResource CardStyle}" Padding="10">
                     <DataGrid ItemsSource="{Binding AnalysisViewModel.Findings}" 
+                              Style="{StaticResource DataGridStyle}"
                               AutoGenerateColumns="False" 
                               IsReadOnly="True" 
                               Background="Transparent" 

@@ -1,64 +1,214 @@
 <UserControl x:Class="VaultSentry.Client.Views.DashboardView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
-             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
-             mc:Ignorable="d" 
-             d:DesignHeight="750" d:DesignWidth="900">
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             mc:Ignorable="d"
+             d:DesignHeight="750" d:DesignWidth="1000">
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-        <StackPanel Margin="30">
-            <!-- Header Title -->
-            <TextBlock Text="Security Operations Dashboard" 
-                       FontSize="26" 
-                       FontWeight="Bold" 
-                       Foreground="#FFFFFF" 
-                       Margin="0,0,0,25" />
+        <StackPanel Margin="36,32,36,40">
+            <TextBlock Text="FILE INTAKE &amp; ANALYSIS" FontSize="10" FontWeight="Bold"
+                       Foreground="{StaticResource AccentBrush}" Margin="0,0,0,10" />
 
-            <!-- KPI Metric Cards Grid -->
-            <UniformGrid Columns="3" Margin="0,0,0,30">
-                <!-- Total Scans Card -->
-                <Border Background="#141C2E" CornerRadius="8" Padding="20" Margin="0,0,10,0">
-                    <StackPanel>
-                        <TextBlock Text="TOTAL SCAN SESSIONS" FontSize="11" FontWeight="Bold" Foreground="#64748B" Margin="0,0,0,8" />
-                        <TextBlock Text="{Binding TotalScans}" FontSize="32" FontWeight="Bold" Foreground="#38BDF8" />
+            <Grid Margin="0,0,0,26">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="1.25*" />
+                    <ColumnDefinition Width="0.75*" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Margin="0,4,36,0">
+                    <TextBlock Text="Managed intake. Local analysis. Deliberate release."
+                               FontSize="31" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}"
+                               TextWrapping="Wrap" MaxWidth="680" />
+                    <TextBlock Text="VaultSentry adds an app-managed intake path: download over HTTPS into temporary staging, submit the file for local static analysis, then decide whether to delete or release the quarantined copy."
+                               FontSize="14" LineHeight="22" Foreground="{StaticResource TextSecondaryBrush}"
+                               TextWrapping="Wrap" Margin="0,13,0,0" MaxWidth="700" />
+                    <StackPanel Orientation="Horizontal" Margin="0,22,0,0">
+                        <Button Content="Run diagnostic sample"
+                                Command="{Binding StartGuidedDemoCommand}"
+                                Style="{StaticResource PrimaryButtonStyle}"
+                                AutomationProperties.Name="Run diagnostic sample" />
+                        <Button Content="Open VQS URL ingestion"
+                                Command="{Binding OpenSecureIntakeCommand}"
+                                Style="{StaticResource SecondaryButtonStyle}"
+                                Margin="10,0,0,0" />
                     </StackPanel>
-                </Border>
-
-                <!-- Quarantined Threats Card -->
-                <Border Background="#141C2E" CornerRadius="8" Padding="20" Margin="5,0,5,0">
-                    <StackPanel>
-                        <TextBlock Text="QUARANTINED THREATS" FontSize="11" FontWeight="Bold" Foreground="#EF4444" Margin="0,0,0,8" />
-                        <TextBlock Text="{Binding QuarantinedThreats}" FontSize="32" FontWeight="Bold" Foreground="#EF4444" />
-                    </StackPanel>
-                </Border>
-
-                <!-- Clean Files Card -->
-                <Border Background="#141C2E" CornerRadius="8" Padding="20" Margin="10,0,0,0">
-                    <StackPanel>
-                        <TextBlock Text="VERIFIED CLEAN FILES" FontSize="11" FontWeight="Bold" Foreground="#10B981" Margin="0,0,0,8" />
-                        <TextBlock Text="{Binding CleanFiles}" FontSize="32" FontWeight="Bold" Foreground="#10B981" />
-                    </StackPanel>
-                </Border>
-            </UniformGrid>
-
-            <!-- System Status & Quick Actions Card -->
-            <Border Background="#141C2E" CornerRadius="8" Padding="25">
-                <StackPanel>
-                    <TextBlock Text="VQS Ingress Protection Status" FontSize="18" FontWeight="Bold" Foreground="#FFFFFF" Margin="0,0,0,10" />
-                    <TextBlock Text="Active. Real-time file system monitoring is intercepting incoming downloads via the Virtual Quarantine Space dropzone." 
-                               FontSize="13" Foreground="#94A3B8" TextWrapping="Wrap" Margin="0,0,0,20" />
-                    
-                    <Button Content="Refresh Telemetry Metrics" 
-                            Command="{Binding LoadMetricsCommand}" 
-                            Background="#334155" 
-                            Foreground="#FFFFFF" 
-                            FontWeight="SemiBold" 
-                            Width="200" 
-                            Height="35" 
-                            HorizontalAlignment="Left"
-                            BorderThickness="0" 
-                            Cursor="Hand" />
                 </StackPanel>
+
+                <Border Grid.Column="1" Background="#10201F" BorderBrush="#1D4843"
+                        BorderThickness="1" CornerRadius="10" Padding="14">
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                            <Ellipse Width="7" Height="7" Fill="#5EEAD4" VerticalAlignment="Center" Margin="0,0,8,0" />
+                            <TextBlock Text="VQS WORKFLOW PREVIEW" FontSize="9" FontWeight="Bold"
+                                       Foreground="#99F6E4" />
+                        </StackPanel>
+                        <Border Background="#050B14" CornerRadius="7" Height="166" ClipToBounds="True">
+                            <Grid>
+                                <MediaElement x:Name="WorkflowPreviewMedia"
+                                              LoadedBehavior="Manual"
+                                              UnloadedBehavior="Stop"
+                                              Stretch="Uniform"
+                                              IsMuted="True"
+                                              MediaOpened="WorkflowPreviewMedia_OnMediaOpened"
+                                              MediaEnded="WorkflowPreviewMedia_OnMediaEnded"
+                                              MediaFailed="WorkflowPreviewMedia_OnMediaFailed"
+                                              AutomationProperties.Name="Illustrative VQS workflow animation" />
+                                <StackPanel x:Name="WorkflowPreviewPlaceholder"
+                                            HorizontalAlignment="Center"
+                                            VerticalAlignment="Center">
+                                    <TextBlock Text="INTAKE  →  ANALYSIS  →  DECISION"
+                                               Foreground="#7DD3FC" FontSize="10" FontWeight="Bold"
+                                               HorizontalAlignment="Center" />
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                        <Button x:Name="WorkflowPreviewButton"
+                                Content="Play 5-second preview"
+                                Click="WorkflowPreviewButton_OnClick"
+                                Style="{StaticResource SecondaryButtonStyle}"
+                                AutomationProperties.Name="Play 5-second VQS workflow preview"
+                                HorizontalAlignment="Center"
+                                Margin="0,9,0,0" />
+                        <TextBlock x:Name="WorkflowPreviewStatus"
+                                   Text="Illustrative animation, not live scan telemetry. Actual findings appear in the scan report; deletion is not guaranteed secure erasure."
+                                   FontSize="9" LineHeight="13" Foreground="#A7C9C4"
+                                   TextWrapping="Wrap" Margin="0,9,0,0" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <Grid Margin="0,0,0,25">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock Text="Hold. Analyze. Decide." Style="{StaticResource SectionHeadingStyle}" />
+                    <TextBlock Text="The app-managed file stays staged while analysis runs; release is a deliberate user decision."
+                               Style="{StaticResource PageSubtitleStyle}" FontSize="11" Margin="0,5,0,0" />
+                </StackPanel>
+                <Button Grid.Column="1" Content="View quarantine vault"
+                        Command="{Binding OpenQuarantineCommand}"
+                        Style="{StaticResource SecondaryButtonStyle}" VerticalAlignment="Center" />
+            </Grid>
+
+            <Grid Margin="0,0,0,25">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="24" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="24" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Border Grid.Column="0" Background="{StaticResource SurfaceBrush}" CornerRadius="8"
+                        BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" Padding="16">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="35" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="01" FontSize="11" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" />
+                        <StackPanel Grid.Column="1">
+                            <TextBlock Text="Hold" Style="{StaticResource SectionHeadingStyle}" />
+                            <TextBlock Text="Managed intake stages the file for analysis; it is not opened automatically."
+                                       Style="{StaticResource PageSubtitleStyle}" FontSize="11" Margin="0,5,0,0" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+                <TextBlock Grid.Column="1" Text="→" FontSize="18" Foreground="{StaticResource TextMutedBrush}"
+                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+                <Border Grid.Column="2" Background="{StaticResource SurfaceBrush}" CornerRadius="8"
+                        BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" Padding="16">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="35" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="02" FontSize="11" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" />
+                        <StackPanel Grid.Column="1">
+                            <TextBlock Text="Analyze" Style="{StaticResource SectionHeadingStyle}" />
+                            <TextBlock Text="Inspect file identity and security signals; review the explainable findings."
+                                       Style="{StaticResource PageSubtitleStyle}" FontSize="11" Margin="0,5,0,0" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+                <TextBlock Grid.Column="3" Text="→" FontSize="18" Foreground="{StaticResource TextMutedBrush}"
+                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+                <Border Grid.Column="4" Background="{StaticResource SurfaceBrush}" CornerRadius="8"
+                        BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" Padding="16">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="35" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="03" FontSize="11" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" />
+                        <StackPanel Grid.Column="1">
+                            <TextBlock Text="Decide" Style="{StaticResource SectionHeadingStyle}" />
+                            <TextBlock Text="Delete the file or explicitly release it after reviewing the verdict."
+                                       Style="{StaticResource PageSubtitleStyle}" FontSize="11" Margin="0,5,0,0" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <Grid Margin="0,0,0,25">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Border Style="{StaticResource CardStyle}" Margin="0,0,7,0" Padding="16">
+                    <StackPanel>
+                        <TextBlock Text="SCAN SESSIONS" FontSize="9" FontWeight="Bold"
+                                   Foreground="{StaticResource TextMutedBrush}" />
+                        <TextBlock Text="{Binding TotalScans, Mode=OneWay}" FontSize="26"
+                                   FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,6,0,0" />
+                    </StackPanel>
+                </Border>
+                <Border Grid.Column="1" Style="{StaticResource CardStyle}" Margin="7,0" Padding="16">
+                    <StackPanel>
+                        <TextBlock Text="HELD FOR REVIEW" FontSize="9" FontWeight="Bold"
+                                   Foreground="{StaticResource TextMutedBrush}" />
+                        <TextBlock Text="{Binding QuarantinedThreats, Mode=OneWay}" FontSize="26"
+                                   FontWeight="SemiBold" Foreground="#FB7185" Margin="0,6,0,0" />
+                    </StackPanel>
+                </Border>
+                <Border Grid.Column="2" Style="{StaticResource CardStyle}" Margin="7,0,0,0" Padding="16">
+                    <StackPanel>
+                        <TextBlock Text="SAFE VERDICTS" FontSize="9" FontWeight="Bold"
+                                   Foreground="{StaticResource TextMutedBrush}" />
+                        <TextBlock Text="{Binding CleanFiles, Mode=OneWay}" FontSize="26"
+                                   FontWeight="SemiBold" Foreground="#34D399" Margin="0,6,0,0" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Padding="0,17,0,0">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="Browser drop-zone" Style="{StaticResource SectionHeadingStyle}" />
+                        <TextBlock Text="A separate convenience path for post-download scanning—not a pre-download interception mechanism."
+                                   Style="{StaticResource PageSubtitleStyle}" FontSize="11" Margin="0,4,0,9" />
+                        <TextBox Text="{Binding DropZonePath, Mode=OneWay}" IsReadOnly="True"
+                                 Style="{StaticResource InputTextBoxStyle}" FontFamily="Consolas" FontSize="10" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="20,0,0,0">
+                        <Button Content="Refresh metrics" Command="{Binding LoadMetricsCommand}"
+                                Style="{StaticResource SecondaryButtonStyle}" HorizontalAlignment="Right" />
+                        <TextBlock Text="Refreshing..." Visibility="{Binding IsRefreshing, Converter={StaticResource BoolToVisConverter}}"
+                                   FontSize="10" Foreground="{StaticResource AccentBrush}" HorizontalAlignment="Right" Margin="0,6,0,0" />
+                        <TextBlock Text="{Binding RefreshMessage, Mode=OneWay}"
+                                   Visibility="{Binding RefreshMessage, Converter={StaticResource StringToVisConverter}}"
+                                   FontSize="10" Foreground="{StaticResource TextSecondaryBrush}" HorizontalAlignment="Right" Margin="0,6,0,0" />
+                        <TextBlock Text="{Binding RefreshError, Mode=OneWay}"
+                                   Visibility="{Binding RefreshError, Converter={StaticResource StringToVisConverter}}"
+                                   FontSize="10" Foreground="#FDA4AF" TextWrapping="Wrap" MaxWidth="240" Margin="0,6,0,0" />
+                    </StackPanel>
+                </Grid>
             </Border>
         </StackPanel>
     </ScrollViewer>

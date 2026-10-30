@@ -19,4 +19,11 @@
     <ProjectReference Include="..\VaultSentry.Core\VaultSentry.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Include="..\assets\video-rep.mp4" Link="assets\video-rep.mp4">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+
 </Project>
